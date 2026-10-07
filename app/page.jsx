@@ -8,9 +8,9 @@ const SUPABASE_ANON_KEY = "sb_publishable_5K3yRDYl2-OxwO78i2mk0A_GV4tDBGl";
 const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
 const LOGO_PRESETS = ['🛡️', '⚡', '🦅', '🦁', '🔥', '👑', '🐉', '⚔️', '⚽', '🏀', '🏐', '♟️'];
-const MAX_FILE_SIZE_MB = 2; // Strict 2MB size limit to protect website storage
+const MAX_FILE_SIZE_MB = 2; // Strict 2MB size limit to preserve storage
 
-// Helper component to render either an Image Logo or Emoji Logo
+// Helper component to render Image Logo or Emoji
 function TeamLogo({ logo, sizeClass = "w-6 h-6 text-base" }) {
   if (logo && (logo.startsWith('http://') || logo.startsWith('https://'))) {
     return (
@@ -56,7 +56,26 @@ export default function Home() {
   const [matchSport, setMatchSport] = useState('Football');
   const [matchDateTime, setMatchDateTime] = useState('');
 
-  // Update class options according to grade & gender rules
+  // 1. Restore Student Session automatically on page refresh
+  useEffect(() => {
+    async function restoreSession() {
+      const savedEmail = localStorage.getItem('stem_student_email');
+      if (savedEmail) {
+        const { data: profile } = await supabase
+          .from('profiles')
+          .select('*')
+          .eq('email', savedEmail)
+          .single();
+
+        if (profile) {
+          setCurrentStudent(profile);
+        }
+      }
+    }
+    restoreSession();
+  }, []);
+
+  // Update class options based on grade & gender rules
   useEffect(() => {
     const prefix = grade === 'G10' ? '1' : grade === 'G11' ? '2' : '3';
     if (gender === 'Male') {
@@ -92,18 +111,17 @@ export default function Home() {
     }
   }
 
-  // Handle Custom Image Logo Upload with strict size limit
+  // Handle Custom Image Upload with 2MB limit
   async function handleLogoUpload(e) {
     const file = e.target.files[0];
     if (!file) return;
 
     if (!file.type.startsWith('image/')) {
-      return alert('Please select a valid image file (PNG, JPG, WebP, etc.).');
+      return alert('Please select a valid image file (PNG, JPG, WebP).');
     }
 
-    // Check size limit (2MB)
     if (file.size > MAX_FILE_SIZE_MB * 1024 * 1024) {
-      return alert(`File is too large (${(file.size / (1024 * 1024)).toFixed(2)} MB). Max limit is ${MAX_FILE_SIZE_MB} MB to preserve website storage.`);
+      return alert(`File is too large (${(file.size / (1024 * 1024)).toFixed(2)} MB). Max limit is ${MAX_FILE_SIZE_MB} MB.`);
     }
 
     setUploadingLogo(true);
@@ -132,7 +150,7 @@ export default function Home() {
     }
   }
 
-  // Register / Login Student
+  // Register or Sign In Student & Save Session
   async function handleRegister(e) {
     e.preventDefault();
     if (!fullName.trim()) return alert('Please enter your full name.');
@@ -157,6 +175,7 @@ export default function Home() {
       .single();
 
     if (existing) {
+      localStorage.setItem('stem_student_email', cleanEmail);
       setCurrentStudent(existing);
       alert(`Welcome back, ${existing.full_name}!`);
       return;
@@ -176,12 +195,20 @@ export default function Home() {
     if (error) {
       alert('Registration failed: ' + error.message);
     } else {
+      localStorage.setItem('stem_student_email', cleanEmail);
       setCurrentStudent(data);
       alert('Account registered successfully! 🏆');
       setFullName('');
       setEmail('');
       fetchData();
     }
+  }
+
+  // Manual Sign Out
+  function handleSignOut() {
+    localStorage.removeItem('stem_student_email');
+    setCurrentStudent(null);
+    setUserDonations([]);
   }
 
   // Delete Student Account
@@ -193,6 +220,7 @@ export default function Home() {
     if (error) {
       alert('Failed to delete account: ' + error.message);
     } else {
+      localStorage.removeItem('stem_student_email');
       alert('Your account has been deleted.');
       setCurrentStudent(null);
       setUserDonations([]);
@@ -200,14 +228,13 @@ export default function Home() {
     }
   }
 
-  // Create or Update Team (Clan)
+  // Create or Edit Team
   async function handleSaveTeam(e) {
     e.preventDefault();
     if (!currentStudent) return alert('Please log in first.');
     if (!newTeamName.trim()) return alert('Please enter a team name.');
 
     if (editingTeamId) {
-      // Edit existing team
       const { error } = await supabase
         .from('teams')
         .update({ team_name: newTeamName, sport: newTeamSport, logo_url: newTeamLogo })
@@ -219,7 +246,6 @@ export default function Home() {
         setEditingTeamId(null);
       }
     } else {
-      // Create new team
       const { data: createdTeam, error } = await supabase
         .from('teams')
         .insert([
@@ -236,7 +262,6 @@ export default function Home() {
       if (error) {
         alert('Error creating team: ' + error.message);
       } else {
-        // Automatically add captain as a clan member
         await supabase.from('team_members').insert([
           { team_id: createdTeam.id, student_id: currentStudent.id, role: 'Captain' },
         ]);
@@ -260,7 +285,7 @@ export default function Home() {
     }
   }
 
-  // Add Member to Clan
+  // Add Member to Clan Roster
   async function handleAddClanMember(teamId) {
     if (!selectedStudentToAdd) return alert('Please select a student to add.');
 
@@ -269,7 +294,7 @@ export default function Home() {
     ]);
 
     if (error) {
-      alert('Could not add member (Student might already be in team): ' + error.message);
+      alert('Could not add member: ' + error.message);
     } else {
       alert('Clan member added successfully!');
       setSelectedStudentToAdd('');
@@ -319,7 +344,7 @@ export default function Home() {
     }
   }
 
-  // Accept or Deny Match Request
+  // Accept or Deny Match Challenge
   async function handleMatchResponse(matchId, newStatus) {
     const { error } = await supabase
       .from('matches')
@@ -358,7 +383,7 @@ export default function Home() {
     }
   }
 
-  // Theme Styling based on Student Gender
+  // Theme Styling based on Gender
   const isFemale = currentStudent?.gender === 'Female';
   const themeClasses = isFemale
     ? {
@@ -377,8 +402,6 @@ export default function Home() {
       };
 
   const myTeams = teams.filter((t) => t.captain_id === currentStudent?.id);
-
-  // Incoming Match Challenges for teams where current student is Captain
   const myTeamIds = myTeams.map((t) => t.id);
   const incomingChallenges = matches.filter(
     (m) => myTeamIds.includes(m.opponent_team_id) && m.status === 'pending'
@@ -386,7 +409,7 @@ export default function Home() {
 
   return (
     <div className="max-w-6xl mx-auto p-4 md:p-8 space-y-10 font-sans text-slate-100">
-      {/* Header */}
+      {/* Header Banner */}
       <header className={`text-center bg-gradient-to-r ${themeClasses.headerBg} p-8 rounded-3xl border shadow-2xl`}>
         <span className={`px-4 py-1.5 rounded-full text-sm font-bold inline-block mb-3 border ${themeClasses.badge}`}>
           Ready To Be Our New Champion 🏆
@@ -412,6 +435,12 @@ export default function Home() {
                 ⭐ {currentStudent.points} Points
               </span>
               <button
+                onClick={handleSignOut}
+                className="bg-slate-700 hover:bg-slate-600 text-white text-xs px-3 py-2 rounded-lg transition"
+              >
+                Sign Out
+              </button>
+              <button
                 onClick={handleDeleteAccount}
                 className="bg-red-600/80 hover:bg-red-600 text-white text-xs px-3 py-2 rounded-lg transition"
               >
@@ -420,7 +449,7 @@ export default function Home() {
             </div>
           </div>
 
-          {/* Incoming Match Requests Alert for Team Leaders */}
+          {/* Incoming Match Challenges Alert */}
           {incomingChallenges.length > 0 && (
             <div className="mb-6 bg-amber-500/10 border border-amber-500/40 p-4 rounded-xl space-y-3">
               <h3 className="font-bold text-amber-400 text-sm flex items-center gap-2">
@@ -464,7 +493,6 @@ export default function Home() {
                 {editingTeamId ? 'Edit Team / Clan' : 'Create New Team / Clan'}
               </h3>
               <form onSubmit={handleSaveTeam} className="space-y-3">
-                {/* Team Name */}
                 <div>
                   <label className="block text-xs text-slate-400 mb-1">Team Name</label>
                   <input
@@ -476,7 +504,6 @@ export default function Home() {
                   />
                 </div>
 
-                {/* Team Logo Options */}
                 <div className="space-y-2">
                   <label className="block text-xs text-slate-400">Team Logo (Preset or Custom Upload)</label>
                   <div className="flex items-center gap-3 bg-slate-900 p-2.5 rounded border border-slate-800">
@@ -486,7 +513,6 @@ export default function Home() {
                     </div>
 
                     <div className="w-full space-y-2">
-                      {/* Emoji Select */}
                       <select
                         value={newTeamLogo.startsWith('http') ? 'custom' : newTeamLogo}
                         onChange={(e) => {
@@ -504,7 +530,6 @@ export default function Home() {
                         )}
                       </select>
 
-                      {/* Custom Upload Input */}
                       <div>
                         <input
                           type="file"
@@ -514,14 +539,13 @@ export default function Home() {
                           className="text-xxs text-slate-400 file:mr-2 file:py-1 file:px-2 file:rounded file:border-0 file:text-xxs file:font-semibold file:bg-blue-600 file:text-white hover:file:bg-blue-500 cursor-pointer"
                         />
                         <span className="text-xxs text-slate-500 block mt-0.5">
-                          {uploadingLogo ? 'Uploading logo...' : `Max size limit: ${MAX_FILE_SIZE_MB}MB`}
+                          {uploadingLogo ? 'Uploading...' : `Max limit: ${MAX_FILE_SIZE_MB}MB`}
                         </span>
                       </div>
                     </div>
                   </div>
                 </div>
 
-                {/* Primary Sport */}
                 <div>
                   <label className="block text-xs text-slate-400 mb-1">Primary Sport</label>
                   <select
@@ -561,7 +585,7 @@ export default function Home() {
               </form>
             </div>
 
-            {/* My Created Teams & Clan Roster Control */}
+            {/* My Created Teams & Roster Control */}
             <div className="bg-slate-950/60 p-4 rounded-xl border border-slate-800 space-y-3">
               <h3 className="font-bold text-slate-300 border-b border-slate-800 pb-2">My Created Teams & Clan Members</h3>
               {myTeams.length === 0 ? (
@@ -597,7 +621,6 @@ export default function Home() {
                           </div>
                         </div>
 
-                        {/* Roster list */}
                         <div className="bg-slate-950 p-2 rounded border border-slate-800">
                           <span className="text-xxs font-bold text-slate-400 uppercase block mb-1">Clan Roster:</span>
                           {members.length === 0 ? (
@@ -623,7 +646,6 @@ export default function Home() {
                             </ul>
                           )}
 
-                          {/* Add Member Dropdown */}
                           <div className="mt-2 flex gap-1">
                             <select
                               value={selectedStudentToAdd}
@@ -657,7 +679,7 @@ export default function Home() {
         </section>
       )}
 
-      {/* Student Account Registration */}
+      {/* Account Registration / Login Section */}
       {!currentStudent && (
         <section className={`p-6 rounded-2xl border shadow-xl ${themeClasses.cardBg}`}>
           <h2 className={`text-2xl font-bold mb-2 ${themeClasses.accentText}`}>Student Account Registration</h2>
