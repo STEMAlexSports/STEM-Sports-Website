@@ -7,34 +7,40 @@ const SUPABASE_ANON_KEY = "sb_publishable_5K3yRDYl2-OxwO78i2mk0A_GV4tDBGl";
 
 const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
+const LOGO_PRESETS = ['🛡️', '⚡', '🦅', '🦁', '🔥', '👑', '🐉', '⚔️', '⚽', '🏀', '🏐', '♟️'];
+
 export default function Home() {
   const [fundraising, setFundraising] = useState([]);
   const [matches, setMatches] = useState([]);
   const [students, setStudents] = useState([]);
   const [teams, setTeams] = useState([]);
+  const [teamMembers, setTeamMembers] = useState([]);
   const [userDonations, setUserDonations] = useState([]);
 
-  // Active Logged-in / Registered Student
+  // Active Student Session
   const [currentStudent, setCurrentStudent] = useState(null);
 
-  // Registration Form States
+  // Registration States
   const [fullName, setFullName] = useState('');
   const [email, setEmail] = useState('');
   const [gender, setGender] = useState('Male');
   const [grade, setGrade] = useState('G10');
   const [className, setClassName] = useState('1A');
 
-  // Match Form States
-  const [challengerTeam, setChallengerTeam] = useState('');
-  const [opponentTeam, setOpponentTeam] = useState('');
-  const [sport, setSport] = useState('Football');
-  const [matchDateTime, setMatchDateTime] = useState('');
-
   // Team Form States
   const [newTeamName, setNewTeamName] = useState('');
   const [newTeamSport, setNewTeamSport] = useState('Football');
+  const [newTeamLogo, setNewTeamLogo] = useState('🛡️');
+  const [editingTeamId, setEditingTeamId] = useState(null);
+  const [selectedStudentToAdd, setSelectedStudentToAdd] = useState('');
 
-  // Update available classes based on Grade and Gender rule
+  // Match Challenge States
+  const [challengerTeamId, setChallengerTeamId] = useState('');
+  const [opponentTeamId, setOpponentTeamId] = useState('');
+  const [matchSport, setMatchSport] = useState('Football');
+  const [matchDateTime, setMatchDateTime] = useState('');
+
+  // Update class options according to grade & gender rules
   useEffect(() => {
     const prefix = grade === 'G10' ? '1' : grade === 'G11' ? '2' : '3';
     if (gender === 'Male') {
@@ -53,11 +59,13 @@ export default function Home() {
     const { data: matchData } = await supabase.from('matches').select('*');
     const { data: profData } = await supabase.from('profiles').select('*');
     const { data: teamData } = await supabase.from('teams').select('*');
+    const { data: tmData } = await supabase.from('team_members').select('*');
 
     if (fundData) setFundraising(fundData);
     if (matchData) setMatches(matchData);
     if (profData) setStudents(profData);
     if (teamData) setTeams(teamData);
+    if (tmData) setTeamMembers(tmData);
 
     if (currentStudent) {
       const { data: donData } = await supabase
@@ -68,19 +76,16 @@ export default function Home() {
     }
   }
 
-  // Handle Registration / Login Validation
+  // Register / Login Student
   async function handleRegister(e) {
     e.preventDefault();
-
     if (!fullName.trim()) return alert('Please enter your full name.');
 
-    // School Email Validation
     const cleanEmail = email.trim().toLowerCase();
     if (!cleanEmail.endsWith('@stemalex.moe.edu.eg')) {
-      return alert('Invalid email! School email must end with @stemalex.moe.edu.eg');
+      return alert('Invalid email! Must end with @stemalex.moe.edu.eg');
     }
 
-    // Class / Gender Strict Validation Rule
     const classLetter = className.slice(-1).toUpperCase();
     if (gender === 'Male' && !['A', 'B', 'C'].includes(classLetter)) {
       return alert('Error: Classes A, B, and C are reserved for Male students only.');
@@ -89,7 +94,6 @@ export default function Home() {
       return alert('Error: Classes D, E, and F are reserved for Female students only.');
     }
 
-    // Check if profile already exists by email
     const { data: existing } = await supabase
       .from('profiles')
       .select('*')
@@ -98,13 +102,11 @@ export default function Home() {
 
     if (existing) {
       setCurrentStudent(existing);
-      alert(`Welcome back, ${existing.full_name}! You are logged in.`);
+      alert(`Welcome back, ${existing.full_name}!`);
       return;
     }
 
-    const newId = crypto.randomUUID();
     const newProfile = {
-      id: newId,
       full_name: fullName,
       email: cleanEmail,
       gender,
@@ -113,103 +115,137 @@ export default function Home() {
       points: 10,
     };
 
-    const { error } = await supabase.from('profiles').insert([newProfile]);
+    const { data, error } = await supabase.from('profiles').insert([newProfile]).select().single();
 
     if (error) {
       alert('Registration failed: ' + error.message);
     } else {
-      setCurrentStudent(newProfile);
-      alert('Account registered successfully! You earned 10 welcome points 🏆');
+      setCurrentStudent(data);
+      alert('Account registered successfully! 🏆');
       setFullName('');
       setEmail('');
       fetchData();
     }
   }
 
-  // Account Deletion Feature
+  // Delete Student Account
   async function handleDeleteAccount() {
     if (!currentStudent) return;
-    const confirmDelete = confirm(
-      'Are you sure you want to delete your account? This action cannot be undone.'
-    );
-    if (!confirmDelete) return;
+    if (!confirm('Are you sure you want to delete your account? This cannot be undone.')) return;
 
-    const { error } = await supabase
-      .from('profiles')
-      .delete()
-      .eq('id', currentStudent.id);
-
+    const { error } = await supabase.from('profiles').delete().eq('id', currentStudent.id);
     if (error) {
       alert('Failed to delete account: ' + error.message);
     } else {
-      alert('Your account has been deleted successfully.');
+      alert('Your account has been deleted.');
       setCurrentStudent(null);
       setUserDonations([]);
       fetchData();
     }
   }
 
-  // Team Creation
-  async function handleCreateTeam(e) {
+  // Create or Update Team (Clan)
+  async function handleSaveTeam(e) {
     e.preventDefault();
-    if (!currentStudent) return alert('Please register or log in first.');
+    if (!currentStudent) return alert('Please log in first.');
     if (!newTeamName.trim()) return alert('Please enter a team name.');
 
-    const { error } = await supabase.from('teams').insert([
-      {
-        team_name: newTeamName,
-        sport: newTeamSport,
-        captain_id: currentStudent.id,
-      },
+    if (editingTeamId) {
+      // Edit existing team
+      const { error } = await supabase
+        .from('teams')
+        .update({ team_name: newTeamName, sport: newTeamSport, logo_url: newTeamLogo })
+        .eq('id', editingTeamId);
+
+      if (error) alert('Error updating team: ' + error.message);
+      else {
+        alert('Team updated successfully!');
+        setEditingTeamId(null);
+      }
+    } else {
+      // Create new team
+      const { data: createdTeam, error } = await supabase
+        .from('teams')
+        .insert([
+          {
+            team_name: newTeamName,
+            sport: newTeamSport,
+            logo_url: newTeamLogo,
+            captain_id: currentStudent.id,
+          },
+        ])
+        .select()
+        .single();
+
+      if (error) {
+        alert('Error creating team: ' + error.message);
+      } else {
+        // Automatically add captain as a clan member
+        await supabase.from('team_members').insert([
+          { team_id: createdTeam.id, student_id: currentStudent.id, role: 'Captain' },
+        ]);
+        alert(`Clan/Team "${newTeamName}" created successfully!`);
+      }
+    }
+
+    setNewTeamName('');
+    setNewTeamLogo('🛡️');
+    fetchData();
+  }
+
+  // Delete Team
+  async function handleDeleteTeam(teamId) {
+    if (!confirm('Are you sure you want to delete this team/clan?')) return;
+    const { error } = await supabase.from('teams').delete().eq('id', teamId);
+    if (error) alert('Delete failed: ' + error.message);
+    else {
+      alert('Team deleted.');
+      fetchData();
+    }
+  }
+
+  // Add Member to Clan
+  async function handleAddClanMember(teamId) {
+    if (!selectedStudentToAdd) return alert('Please select a student to add.');
+
+    const { error } = await supabase.from('team_members').insert([
+      { team_id: teamId, student_id: selectedStudentToAdd, role: 'Member' },
     ]);
 
     if (error) {
-      alert('Error creating team: ' + error.message);
+      alert('Could not add member (Student might already be in team): ' + error.message);
     } else {
-      alert(`Team "${newTeamName}" created successfully!`);
-      setNewTeamName('');
+      alert('Clan member added successfully!');
+      setSelectedStudentToAdd('');
       fetchData();
     }
   }
 
-  // Equipment Donation
-  async function handleDonate(itemId, currentAmount) {
-    if (!currentStudent) return alert('Please register or log in to make a donation.');
-
-    const amount = prompt('Enter donation amount in EGP:');
-    if (!amount || isNaN(amount) || Number(amount) <= 0) return;
-
-    const numAmount = Number(amount);
-    const newTotal = Number(currentAmount) + numAmount;
-
-    const { error: updateError } = await supabase
-      .from('fundraising')
-      .update({ raised_amount: newTotal })
-      .eq('id', itemId);
-
-    if (!updateError) {
-      await supabase.from('donations').insert([
-        {
-          student_id: currentStudent.id,
-          item_id: itemId,
-          amount: numAmount,
-        },
-      ]);
-      alert('Thank you for contributing to STEM sports equipment!');
+  // Remove Member from Clan
+  async function handleRemoveClanMember(membershipId) {
+    const { error } = await supabase.from('team_members').delete().eq('id', membershipId);
+    if (error) alert('Could not remove member: ' + error.message);
+    else {
+      alert('Member removed from clan.');
       fetchData();
     }
   }
 
-  // Friendly Match Challenge
+  // Send Match Challenge
   async function handleCreateMatch(e) {
     e.preventDefault();
-    if (!challengerTeam || !opponentTeam || !matchDateTime) {
-      return alert('Please fill in all match challenge details.');
+    if (!challengerTeamId || !opponentTeamId || !matchDateTime) {
+      return alert('Please select both teams and match date/time.');
+    }
+    if (challengerTeamId === opponentTeamId) {
+      return alert('A team cannot challenge itself!');
     }
 
     const { error } = await supabase.from('matches').insert([
       {
-        sport,
+        challenger_team_id: challengerTeamId,
+        opponent_team_id: opponentTeamId,
+        sport: matchSport,
         match_date: matchDateTime.split('T')[0],
         match_time: matchDateTime,
         status: 'pending',
@@ -219,17 +255,55 @@ export default function Home() {
     if (error) {
       alert('Error creating match challenge: ' + error.message);
     } else {
-      alert('Friendly Match Challenge submitted! Status set to Pending.');
-      setChallengerTeam('');
-      setOpponentTeam('');
+      alert('Friendly Match Challenge sent to Opponent Leader!');
+      setChallengerTeamId('');
+      setOpponentTeamId('');
       setMatchDateTime('');
       fetchData();
     }
   }
 
-  // Gender-based dynamic theme styling
-  const isFemale = currentStudent?.gender === 'Female';
+  // Accept or Deny Match Request
+  async function handleMatchResponse(matchId, newStatus) {
+    const { error } = await supabase
+      .from('matches')
+      .update({ status: newStatus })
+      .eq('id', matchId);
 
+    if (error) {
+      alert('Status update failed: ' + error.message);
+    } else {
+      alert(`Match challenge ${newStatus}!`);
+      fetchData();
+    }
+  }
+
+  // Equipment Donation
+  async function handleDonate(itemId, currentAmount) {
+    if (!currentStudent) return alert('Please register/log in to donate.');
+
+    const amount = prompt('Enter donation amount in EGP:');
+    if (!amount || isNaN(amount) || Number(amount) <= 0) return;
+
+    const numAmount = Number(amount);
+    const newTotal = Number(currentAmount) + numAmount;
+
+    const { error } = await supabase
+      .from('fundraising')
+      .update({ raised_amount: newTotal })
+      .eq('id', itemId);
+
+    if (!error) {
+      await supabase.from('donations').insert([
+        { student_id: currentStudent.id, item_id: itemId, amount: numAmount },
+      ]);
+      alert('Thank you for contributing to STEM sports!');
+      fetchData();
+    }
+  }
+
+  // Theme Styling based on Student Gender
+  const isFemale = currentStudent?.gender === 'Female';
   const themeClasses = isFemale
     ? {
         headerBg: 'from-pink-900 via-rose-900 to-pink-950 border-pink-700/50',
@@ -237,7 +311,6 @@ export default function Home() {
         accentText: 'text-pink-400',
         cardBg: 'bg-slate-900/90 border-pink-900/40',
         buttonBg: 'bg-pink-600 hover:bg-pink-500',
-        border: 'border-pink-800/50',
       }
     : {
         headerBg: 'from-blue-950 via-indigo-900 to-slate-900 border-blue-700/50',
@@ -245,19 +318,19 @@ export default function Home() {
         accentText: 'text-cyan-400',
         cardBg: 'bg-slate-900/90 border-blue-900/40',
         buttonBg: 'bg-blue-600 hover:bg-blue-500',
-        border: 'border-blue-800/50',
       };
 
-  // Helper for available class options
-  const classPrefix = grade === 'G10' ? '1' : grade === 'G11' ? '2' : '3';
-  const availableClasses =
-    gender === 'Male'
-      ? [`${classPrefix}A`, `${classPrefix}B`, `${classPrefix}C`]
-      : [`${classPrefix}D`, `${classPrefix}E`, `${classPrefix}F`];
+  const myTeams = teams.filter((t) => t.captain_id === currentStudent?.id);
+
+  // Incoming Match Challenges for teams where current student is Captain
+  const myTeamIds = myTeams.map((t) => t.id);
+  const incomingChallenges = matches.filter(
+    (m) => myTeamIds.includes(m.opponent_team_id) && m.status === 'pending'
+  );
 
   return (
     <div className="max-w-6xl mx-auto p-4 md:p-8 space-y-10 font-sans text-slate-100">
-      {/* Header Banner */}
+      {/* Header */}
       <header className={`text-center bg-gradient-to-r ${themeClasses.headerBg} p-8 rounded-3xl border shadow-2xl`}>
         <span className={`px-4 py-1.5 rounded-full text-sm font-bold inline-block mb-3 border ${themeClasses.badge}`}>
           Ready To Be Our New Champion 🏆
@@ -268,12 +341,12 @@ export default function Home() {
         </p>
       </header>
 
-      {/* Student Dashboard (When Logged In) */}
+      {/* Student Dashboard */}
       {currentStudent && (
         <section className={`p-6 rounded-2xl border shadow-xl ${themeClasses.cardBg}`}>
           <div className="flex flex-col md:flex-row justify-between items-start md:items-center border-b border-slate-700 pb-4 mb-6 gap-4">
             <div>
-              <span className="text-xs uppercase tracking-wider text-slate-400">Student Dashboard</span>
+              <span className="text-xs uppercase tracking-wider text-slate-400">Student & Team Leader Dashboard</span>
               <h2 className={`text-2xl font-bold ${themeClasses.accentText}`}>
                 Welcome, {currentStudent.full_name} ({currentStudent.gender})
               </h2>
@@ -291,65 +364,206 @@ export default function Home() {
             </div>
           </div>
 
-          <div className="grid md:grid-cols-3 gap-6 text-sm">
-            {/* Personal Info */}
-            <div className="bg-slate-950/60 p-4 rounded-xl border border-slate-800 space-y-2">
-              <h3 className="font-bold text-slate-300 border-b border-slate-800 pb-2">Personal Information</h3>
-              <p><span className="text-slate-400">Email:</span> {currentStudent.email}</p>
-              <p><span className="text-slate-400">Grade:</span> {currentStudent.grade}</p>
-              <p><span className="text-slate-400">Class:</span> {currentStudent.class_name}</p>
-              <p><span className="text-slate-400">Gender:</span> {currentStudent.gender}</p>
+          {/* Incoming Match Requests Alert for Team Leaders */}
+          {incomingChallenges.length > 0 && (
+            <div className="mb-6 bg-amber-500/10 border border-amber-500/40 p-4 rounded-xl space-y-3">
+              <h3 className="font-bold text-amber-400 text-sm flex items-center gap-2">
+                <span>⚠️</span> Incoming Friendly Match Requests!
+              </h3>
+              {incomingChallenges.map((match) => {
+                const challengerTeam = teams.find((t) => t.id === match.challenger_team_id);
+                const opponentTeam = teams.find((t) => t.id === match.opponent_team_id);
+                return (
+                  <div key={match.id} className="bg-slate-950 p-3 rounded-lg border border-slate-800 flex flex-col md:flex-row justify-between items-start md:items-center gap-2 text-xs">
+                    <div>
+                      <span className="font-bold text-white">{challengerTeam?.logo_url || '🛡️'} {challengerTeam?.team_name}</span> challenged your team <span className="font-bold text-cyan-400">{opponentTeam?.team_name}</span> in <span className="underline">{match.sport}</span>
+                      <p className="text-slate-400 text-xxs mt-0.5">Date: {new Date(match.match_time).toLocaleString()}</p>
+                    </div>
+                    <div className="flex gap-2">
+                      <button
+                        onClick={() => handleMatchResponse(match.id, 'approved')}
+                        className="bg-emerald-600 hover:bg-emerald-500 text-white font-bold px-3 py-1.5 rounded transition"
+                      >
+                        Accept Challenge
+                      </button>
+                      <button
+                        onClick={() => handleMatchResponse(match.id, 'denied')}
+                        className="bg-rose-600 hover:bg-rose-500 text-white font-bold px-3 py-1.5 rounded transition"
+                      >
+                        Decline
+                      </button>
+                    </div>
+                  </div>
+                );
+              })}
             </div>
+          )}
 
-            {/* Team Manager */}
+          <div className="grid md:grid-cols-2 gap-6 text-sm">
+            {/* Clan / Team Creator & Editor */}
             <div className="bg-slate-950/60 p-4 rounded-xl border border-slate-800 space-y-3">
-              <h3 className="font-bold text-slate-300 border-b border-slate-800 pb-2">My Team Manager</h3>
-              <form onSubmit={handleCreateTeam} className="space-y-2">
-                <input
-                  type="text"
-                  placeholder="Team Name"
-                  value={newTeamName}
-                  onChange={(e) => setNewTeamName(e.target.value)}
-                  className="w-full bg-slate-900 border border-slate-700 rounded p-2 text-xs text-white"
-                />
-                <select
-                  value={newTeamSport}
-                  onChange={(e) => setNewTeamSport(e.target.value)}
-                  className="w-full bg-slate-900 border border-slate-700 rounded p-2 text-xs text-white"
-                >
-                  <option>Football</option>
-                  <option>Volleyball</option>
-                  <option>Basketball</option>
-                  <option>Table Tennis</option>
-                  <option>Chess</option>
-                </select>
-                <button className={`w-full text-xs font-bold py-2 rounded transition ${themeClasses.buttonBg}`}>
-                  Create Team
-                </button>
+              <h3 className="font-bold text-slate-300 border-b border-slate-800 pb-2">
+                {editingTeamId ? 'Edit Team / Clan' : 'Create New Team / Clan'}
+              </h3>
+              <form onSubmit={handleSaveTeam} className="space-y-3">
+                <div className="flex gap-2">
+                  <div className="w-1/3">
+                    <label className="block text-xs text-slate-400 mb-1">Team Logo</label>
+                    <select
+                      value={newTeamLogo}
+                      onChange={(e) => setNewTeamLogo(e.target.value)}
+                      className="w-full bg-slate-900 border border-slate-700 rounded p-2 text-sm text-white"
+                    >
+                      {LOGO_PRESETS.map((logo) => (
+                        <option key={logo} value={logo}>{logo}</option>
+                      ))}
+                    </select>
+                  </div>
+                  <div className="w-2/3">
+                    <label className="block text-xs text-slate-400 mb-1">Team Name</label>
+                    <input
+                      type="text"
+                      placeholder="e.g. Alex STEM Dragons"
+                      value={newTeamName}
+                      onChange={(e) => setNewTeamName(e.target.value)}
+                      className="w-full bg-slate-900 border border-slate-700 rounded p-2 text-xs text-white"
+                    />
+                  </div>
+                </div>
+
+                <div>
+                  <label className="block text-xs text-slate-400 mb-1">Primary Sport</label>
+                  <select
+                    value={newTeamSport}
+                    onChange={(e) => setNewTeamSport(e.target.value)}
+                    className="w-full bg-slate-900 border border-slate-700 rounded p-2 text-xs text-white"
+                  >
+                    <option>Football</option>
+                    <option>Volleyball</option>
+                    <option>Basketball</option>
+                    <option>Table Tennis</option>
+                    <option>Chess</option>
+                  </select>
+                </div>
+
+                <div className="flex gap-2">
+                  <button className={`w-full text-xs font-bold py-2 rounded transition ${themeClasses.buttonBg}`}>
+                    {editingTeamId ? 'Save Changes' : 'Create Team'}
+                  </button>
+                  {editingTeamId && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setEditingTeamId(null);
+                        setNewTeamName('');
+                        setNewTeamLogo('🛡️');
+                      }}
+                      className="bg-slate-700 text-xs px-3 rounded"
+                    >
+                      Cancel
+                    </button>
+                  )}
+                </div>
               </form>
             </div>
 
-            {/* My Donations */}
-            <div className="bg-slate-950/60 p-4 rounded-xl border border-slate-800 space-y-2">
-              <h3 className="font-bold text-slate-300 border-b border-slate-800 pb-2">My Contributions</h3>
-              {userDonations.length === 0 ? (
-                <p className="text-xs text-slate-500">No equipment donations logged yet.</p>
+            {/* My Created Teams & Clan Roster Control */}
+            <div className="bg-slate-950/60 p-4 rounded-xl border border-slate-800 space-y-3">
+              <h3 className="font-bold text-slate-300 border-b border-slate-800 pb-2">My Created Teams & Clan Members</h3>
+              {myTeams.length === 0 ? (
+                <p className="text-xs text-slate-500">You haven't created any teams yet.</p>
               ) : (
-                <ul className="space-y-1 text-xs max-h-32 overflow-y-auto">
-                  {userDonations.map((don) => (
-                    <li key={don.id} className="flex justify-between text-slate-300">
-                      <span>{don.fundraising?.item_name || 'Equipment'}</span>
-                      <span className="font-bold text-emerald-400">{don.amount} EGP</span>
-                    </li>
-                  ))}
-                </ul>
+                <div className="space-y-4 max-h-60 overflow-y-auto pr-1">
+                  {myTeams.map((team) => {
+                    const members = teamMembers.filter((tm) => tm.team_id === team.id);
+                    return (
+                      <div key={team.id} className="bg-slate-900 p-3 rounded-lg border border-slate-800 space-y-2 text-xs">
+                        <div className="flex justify-between items-center">
+                          <span className="font-bold text-white text-sm">
+                            {team.logo_url} {team.team_name} <span className="text-xxs font-normal text-slate-400">({team.sport})</span>
+                          </span>
+                          <div className="flex gap-1">
+                            <button
+                              onClick={() => {
+                                setEditingTeamId(team.id);
+                                setNewTeamName(team.team_name);
+                                setNewTeamSport(team.sport);
+                                setNewTeamLogo(team.logo_url || '🛡️');
+                              }}
+                              className="bg-blue-600/40 hover:bg-blue-600 text-white px-2 py-0.5 rounded text-xxs"
+                            >
+                              Edit
+                            </button>
+                            <button
+                              onClick={() => handleDeleteTeam(team.id)}
+                              className="bg-red-600/40 hover:bg-red-600 text-white px-2 py-0.5 rounded text-xxs"
+                            >
+                              Delete
+                            </button>
+                          </div>
+                        </div>
+
+                        {/* Roster list */}
+                        <div className="bg-slate-950 p-2 rounded border border-slate-800">
+                          <span className="text-xxs font-bold text-slate-400 uppercase block mb-1">Clan Roster:</span>
+                          {members.length === 0 ? (
+                            <p className="text-xxs text-slate-500">No members added yet.</p>
+                          ) : (
+                            <ul className="space-y-1">
+                              {members.map((m) => {
+                                const prof = students.find((s) => s.id === m.student_id);
+                                return (
+                                  <li key={m.id} className="flex justify-between items-center text-xxs">
+                                    <span>👤 {prof?.full_name || 'Student'} ({prof?.class_name}) - <span className="text-amber-400">{m.role}</span></span>
+                                    {m.student_id !== currentStudent.id && (
+                                      <button
+                                        onClick={() => handleRemoveClanMember(m.id)}
+                                        className="text-red-400 hover:underline"
+                                      >
+                                        Remove
+                                      </button>
+                                    )}
+                                  </li>
+                                );
+                              })}
+                            </ul>
+                          )}
+
+                          {/* Add Member Dropdown */}
+                          <div className="mt-2 flex gap-1">
+                            <select
+                              value={selectedStudentToAdd}
+                              onChange={(e) => setSelectedStudentToAdd(e.target.value)}
+                              className="w-full bg-slate-900 border border-slate-700 rounded text-xxs p-1 text-white"
+                            >
+                              <option value="">Select Student to Add...</option>
+                              {students
+                                .filter((s) => s.id !== currentStudent.id)
+                                .map((s) => (
+                                  <option key={s.id} value={s.id}>
+                                    {s.full_name} ({s.class_name})
+                                  </option>
+                                ))}
+                            </select>
+                            <button
+                              onClick={() => handleAddClanMember(team.id)}
+                              className="bg-emerald-600 hover:bg-emerald-500 text-white text-xxs px-2 rounded font-bold"
+                            >
+                              + Add
+                            </button>
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
               )}
             </div>
           </div>
         </section>
       )}
 
-      {/* Account Registration / Login Section */}
+      {/* Student Account Registration */}
       {!currentStudent && (
         <section className={`p-6 rounded-2xl border shadow-xl ${themeClasses.cardBg}`}>
           <h2 className={`text-2xl font-bold mb-2 ${themeClasses.accentText}`}>Student Account Registration</h2>
@@ -364,7 +578,7 @@ export default function Home() {
                 placeholder="e.g. Philopateer Gerges"
                 value={fullName}
                 onChange={(e) => setFullName(e.target.value)}
-                className="w-full bg-slate-950 border border-slate-700 rounded-lg p-2.5 text-white focus:outline-none focus:border-cyan-500"
+                className="w-full bg-slate-950 border border-slate-700 rounded-lg p-2.5 text-white focus:outline-none"
               />
             </div>
 
@@ -376,7 +590,7 @@ export default function Home() {
                 placeholder="student@stemalex.moe.edu.eg"
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
-                className="w-full bg-slate-950 border border-slate-700 rounded-lg p-2.5 text-white focus:outline-none focus:border-cyan-500"
+                className="w-full bg-slate-950 border border-slate-700 rounded-lg p-2.5 text-white focus:outline-none"
               />
             </div>
 
@@ -414,7 +628,10 @@ export default function Home() {
                 onChange={(e) => setClassName(e.target.value)}
                 className="w-full bg-slate-950 border border-slate-700 rounded-lg p-2.5 text-white"
               >
-                {availableClasses.map((c) => (
+                {(gender === 'Male'
+                  ? [`${grade === 'G10' ? '1' : grade === 'G11' ? '2' : '3'}A`, `${grade === 'G10' ? '1' : grade === 'G11' ? '2' : '3'}B`, `${grade === 'G10' ? '1' : grade === 'G11' ? '2' : '3'}C`]
+                  : [`${grade === 'G10' ? '1' : grade === 'G11' ? '2' : '3'}D`, `${grade === 'G10' ? '1' : grade === 'G11' ? '2' : '3'}E`, `${grade === 'G10' ? '1' : grade === 'G11' ? '2' : '3'}F`]
+                ).map((c) => (
                   <option key={c} value={c}>{c}</option>
                 ))}
               </select>
@@ -427,7 +644,7 @@ export default function Home() {
         </section>
       )}
 
-      {/* STEM Sports Class Leaderboard */}
+      {/* Class Standings */}
       <section className="bg-slate-900/90 p-6 rounded-2xl border border-slate-800">
         <h2 className="text-2xl font-bold mb-4 flex items-center gap-2 text-amber-400">
           <span>🥇</span> Class Standings & Points (STEM SPORTS CLASS)
@@ -446,9 +663,7 @@ export default function Home() {
             <tbody>
               {students.length === 0 ? (
                 <tr>
-                  <td colSpan="5" className="p-4 text-center text-slate-500">
-                    No student registered yet. Be the first to join!
-                  </td>
+                  <td colSpan="5" className="p-4 text-center text-slate-500">No students registered yet.</td>
                 </tr>
               ) : (
                 students.map((student) => (
@@ -470,14 +685,12 @@ export default function Home() {
         </div>
       </section>
 
-      {/* Crowdfunding Equipment Progress */}
+      {/* Equipment Crowdfunding */}
       <section className="bg-slate-900/90 p-6 rounded-2xl border border-slate-800">
         <h2 className="text-2xl font-bold mb-1 text-emerald-400 flex items-center gap-2">
           <span>💰</span> Equipment Crowdfunding Tracker
         </h2>
-        <p className="text-xs text-slate-400 mb-6">
-          Transparent student-driven funding for new gym equipment and court repairs.
-        </p>
+        <p className="text-xs text-slate-400 mb-6">Transparent student-driven funding for new equipment.</p>
 
         <div className="grid md:grid-cols-3 gap-6">
           {fundraising.map((item) => {
@@ -487,17 +700,14 @@ export default function Home() {
                 <div>
                   <h3 className="font-bold text-base mb-1 text-white">{item.item_name}</h3>
                   <p className="text-xs text-slate-400 mb-4">{item.description}</p>
-
                   <div className="w-full bg-slate-800 h-2.5 rounded-full overflow-hidden mb-2">
                     <div className="bg-emerald-500 h-full transition-all duration-500" style={{ width: `${percent}%` }}></div>
                   </div>
-
                   <div className="flex justify-between text-xs text-slate-400 mb-4">
                     <span>Raised: {item.raised_amount} EGP</span>
                     <span>Goal: {item.target_amount} EGP ({percent}%)</span>
                   </div>
                 </div>
-
                 <button
                   onClick={() => handleDonate(item.id, item.raised_amount)}
                   className="w-full bg-emerald-600 hover:bg-emerald-500 text-white font-bold py-2 rounded-lg text-xs transition"
@@ -517,31 +727,41 @@ export default function Home() {
           <h2 className="text-xl font-bold mb-4 text-purple-400">⚔️ Challenge Friendly Match</h2>
           <form onSubmit={handleCreateMatch} className="space-y-4 text-sm">
             <div>
-              <label className="block text-xs text-slate-300 mb-1">Challenger Team</label>
-              <input
-                type="text"
-                placeholder="Your Team Name"
-                value={challengerTeam}
-                onChange={(e) => setChallengerTeam(e.target.value)}
+              <label className="block text-xs text-slate-300 mb-1">Select Your Team (Challenger)</label>
+              <select
+                value={challengerTeamId}
+                onChange={(e) => setChallengerTeamId(e.target.value)}
                 className="w-full bg-slate-950 border border-slate-700 rounded-lg p-2.5 text-white"
-              />
+              >
+                <option value="">Select your team...</option>
+                {myTeams.map((t) => (
+                  <option key={t.id} value={t.id}>{t.logo_url} {t.team_name} ({t.sport})</option>
+                ))}
+              </select>
             </div>
+
             <div>
-              <label className="block text-xs text-slate-300 mb-1">Opponent Team</label>
-              <input
-                type="text"
-                placeholder="Opponent Team Name"
-                value={opponentTeam}
-                onChange={(e) => setOpponentTeam(e.target.value)}
+              <label className="block text-xs text-slate-300 mb-1">Select Opponent Team</label>
+              <select
+                value={opponentTeamId}
+                onChange={(e) => setOpponentTeamId(e.target.value)}
                 className="w-full bg-slate-950 border border-slate-700 rounded-lg p-2.5 text-white"
-              />
+              >
+                <option value="">Select opponent team...</option>
+                {teams
+                  .filter((t) => t.captain_id !== currentStudent?.id)
+                  .map((t) => (
+                    <option key={t.id} value={t.id}>{t.logo_url} {t.team_name} ({t.sport})</option>
+                  ))}
+              </select>
             </div>
+
             <div className="grid grid-cols-2 gap-4">
               <div>
                 <label className="block text-xs text-slate-300 mb-1">Sport</label>
                 <select
-                  value={sport}
-                  onChange={(e) => setSport(e.target.value)}
+                  value={matchSport}
+                  onChange={(e) => setMatchSport(e.target.value)}
                   className="w-full bg-slate-950 border border-slate-700 rounded-lg p-2.5 text-white"
                 >
                   <option>Football</option>
@@ -552,7 +772,7 @@ export default function Home() {
                 </select>
               </div>
               <div>
-                <label className="block text-xs text-slate-300 mb-1">Exact Date & Hour</label>
+                <label className="block text-xs text-slate-300 mb-1">Date & Exact Hour</label>
                 <input
                   type="datetime-local"
                   value={matchDateTime}
@@ -561,6 +781,7 @@ export default function Home() {
                 />
               </div>
             </div>
+
             <button className="w-full bg-purple-600 hover:bg-purple-500 font-bold py-2.5 rounded-lg transition">
               Send Match Challenge
             </button>
@@ -574,21 +795,31 @@ export default function Home() {
             {matches.length === 0 ? (
               <p className="text-xs text-slate-500">No match challenges scheduled yet.</p>
             ) : (
-              matches.map((match) => (
-                <div key={match.id} className="bg-slate-950 p-4 rounded-xl border border-slate-800 flex justify-between items-center text-xs">
-                  <div>
-                    <span className="font-bold text-white block">{match.sport} Match</span>
-                    <span className="text-slate-400">Date/Time: {match.match_time ? new Date(match.match_time).toLocaleString() : match.match_date}</span>
+              matches.map((match) => {
+                const chalTeam = teams.find((t) => t.id === match.challenger_team_id);
+                const oppTeam = teams.find((t) => t.id === match.opponent_team_id);
+
+                return (
+                  <div key={match.id} className="bg-slate-950 p-4 rounded-xl border border-slate-800 flex justify-between items-center text-xs">
+                    <div>
+                      <span className="font-bold text-white block">
+                        {chalTeam?.logo_url || '🛡️'} {chalTeam?.team_name || 'Challenger'} vs {oppTeam?.logo_url || '🛡️'} {oppTeam?.team_name || 'Opponent'}
+                      </span>
+                      <span className="text-slate-400 block text-xxs">Sport: {match.sport}</span>
+                      <span className="text-slate-400 block text-xxs">
+                        Time: {match.match_time ? new Date(match.match_time).toLocaleString() : match.match_date}
+                      </span>
+                    </div>
+                    <span className={`px-2.5 py-1 rounded-full font-bold uppercase text-xxs ${
+                      match.status === 'approved' ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30' :
+                      match.status === 'denied' ? 'bg-rose-500/20 text-rose-400 border border-rose-500/30' :
+                      'bg-amber-500/20 text-amber-400 border border-amber-500/30'
+                    }`}>
+                      {match.status}
+                    </span>
                   </div>
-                  <span className={`px-2.5 py-1 rounded-full font-bold uppercase ${
-                    match.status === 'approved' ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30' :
-                    match.status === 'denied' ? 'bg-red-500/20 text-red-400 border border-red-500/30' :
-                    'bg-amber-500/20 text-amber-400 border border-amber-500/30'
-                  }`}>
-                    {match.status}
-                  </span>
-                </div>
-              ))
+                );
+              })
             )}
           </div>
         </section>
