@@ -8,6 +8,21 @@ const SUPABASE_ANON_KEY = "sb_publishable_5K3yRDYl2-OxwO78i2mk0A_GV4tDBGl";
 const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
 const LOGO_PRESETS = ['🛡️', '⚡', '🦅', '🦁', '🔥', '👑', '🐉', '⚔️', '⚽', '🏀', '🏐', '♟️'];
+const MAX_FILE_SIZE_MB = 2; // Strict 2MB size limit to protect website storage
+
+// Helper component to render either an Image Logo or Emoji Logo
+function TeamLogo({ logo, sizeClass = "w-6 h-6 text-base" }) {
+  if (logo && (logo.startsWith('http://') || logo.startsWith('https://'))) {
+    return (
+      <img
+        src={logo}
+        alt="Team Logo"
+        className={`${sizeClass} object-cover rounded-full inline-block align-middle border border-slate-700 bg-slate-900`}
+      />
+    );
+  }
+  return <span className="inline-block align-middle mr-1">{logo || '🛡️'}</span>;
+}
 
 export default function Home() {
   const [fundraising, setFundraising] = useState([]);
@@ -31,6 +46,7 @@ export default function Home() {
   const [newTeamName, setNewTeamName] = useState('');
   const [newTeamSport, setNewTeamSport] = useState('Football');
   const [newTeamLogo, setNewTeamLogo] = useState('🛡️');
+  const [uploadingLogo, setUploadingLogo] = useState(false);
   const [editingTeamId, setEditingTeamId] = useState(null);
   const [selectedStudentToAdd, setSelectedStudentToAdd] = useState('');
 
@@ -73,6 +89,46 @@ export default function Home() {
         .select('*, fundraising(item_name)')
         .eq('student_id', currentStudent.id);
       if (donData) setUserDonations(donData);
+    }
+  }
+
+  // Handle Custom Image Logo Upload with strict size limit
+  async function handleLogoUpload(e) {
+    const file = e.target.files[0];
+    if (!file) return;
+
+    if (!file.type.startsWith('image/')) {
+      return alert('Please select a valid image file (PNG, JPG, WebP, etc.).');
+    }
+
+    // Check size limit (2MB)
+    if (file.size > MAX_FILE_SIZE_MB * 1024 * 1024) {
+      return alert(`File is too large (${(file.size / (1024 * 1024)).toFixed(2)} MB). Max limit is ${MAX_FILE_SIZE_MB} MB to preserve website storage.`);
+    }
+
+    setUploadingLogo(true);
+    try {
+      const fileExt = file.name.split('.').pop();
+      const fileName = `${Date.now()}_${Math.random().toString(36).substring(2, 7)}.${fileExt}`;
+
+      const { error: uploadError } = await supabase.storage
+        .from('team-logos')
+        .upload(fileName, file, { cacheControl: '3600', upsert: false });
+
+      if (uploadError) {
+        alert('Upload failed: ' + uploadError.message);
+      } else {
+        const { data: publicUrlData } = supabase.storage
+          .from('team-logos')
+          .getPublicUrl(fileName);
+
+        setNewTeamLogo(publicUrlData.publicUrl);
+        alert('Custom logo uploaded successfully! 🖼️');
+      }
+    } catch (err) {
+      alert('Upload error: ' + err.message);
+    } finally {
+      setUploadingLogo(false);
     }
   }
 
@@ -376,7 +432,9 @@ export default function Home() {
                 return (
                   <div key={match.id} className="bg-slate-950 p-3 rounded-lg border border-slate-800 flex flex-col md:flex-row justify-between items-start md:items-center gap-2 text-xs">
                     <div>
-                      <span className="font-bold text-white">{challengerTeam?.logo_url || '🛡️'} {challengerTeam?.team_name}</span> challenged your team <span className="font-bold text-cyan-400">{opponentTeam?.team_name}</span> in <span className="underline">{match.sport}</span>
+                      <span className="font-bold text-white">
+                        <TeamLogo logo={challengerTeam?.logo_url} /> {challengerTeam?.team_name}
+                      </span> challenged your team <span className="font-bold text-cyan-400">{opponentTeam?.team_name}</span> in <span className="underline">{match.sport}</span>
                       <p className="text-slate-400 text-xxs mt-0.5">Date: {new Date(match.match_time).toLocaleString()}</p>
                     </div>
                     <div className="flex gap-2">
@@ -406,31 +464,64 @@ export default function Home() {
                 {editingTeamId ? 'Edit Team / Clan' : 'Create New Team / Clan'}
               </h3>
               <form onSubmit={handleSaveTeam} className="space-y-3">
-                <div className="flex gap-2">
-                  <div className="w-1/3">
-                    <label className="block text-xs text-slate-400 mb-1">Team Logo</label>
-                    <select
-                      value={newTeamLogo}
-                      onChange={(e) => setNewTeamLogo(e.target.value)}
-                      className="w-full bg-slate-900 border border-slate-700 rounded p-2 text-sm text-white"
-                    >
-                      {LOGO_PRESETS.map((logo) => (
-                        <option key={logo} value={logo}>{logo}</option>
-                      ))}
-                    </select>
-                  </div>
-                  <div className="w-2/3">
-                    <label className="block text-xs text-slate-400 mb-1">Team Name</label>
-                    <input
-                      type="text"
-                      placeholder="e.g. Alex STEM Dragons"
-                      value={newTeamName}
-                      onChange={(e) => setNewTeamName(e.target.value)}
-                      className="w-full bg-slate-900 border border-slate-700 rounded p-2 text-xs text-white"
-                    />
+                {/* Team Name */}
+                <div>
+                  <label className="block text-xs text-slate-400 mb-1">Team Name</label>
+                  <input
+                    type="text"
+                    placeholder="e.g. Alex STEM Dragons"
+                    value={newTeamName}
+                    onChange={(e) => setNewTeamName(e.target.value)}
+                    className="w-full bg-slate-900 border border-slate-700 rounded p-2 text-xs text-white"
+                  />
+                </div>
+
+                {/* Team Logo Options */}
+                <div className="space-y-2">
+                  <label className="block text-xs text-slate-400">Team Logo (Preset or Custom Upload)</label>
+                  <div className="flex items-center gap-3 bg-slate-900 p-2.5 rounded border border-slate-800">
+                    <div className="flex-shrink-0 text-center">
+                      <span className="text-xxs text-slate-400 block mb-1">Preview</span>
+                      <TeamLogo logo={newTeamLogo} sizeClass="w-10 h-10 text-2xl" />
+                    </div>
+
+                    <div className="w-full space-y-2">
+                      {/* Emoji Select */}
+                      <select
+                        value={newTeamLogo.startsWith('http') ? 'custom' : newTeamLogo}
+                        onChange={(e) => {
+                          if (e.target.value !== 'custom') setNewTeamLogo(e.target.value);
+                        }}
+                        className="w-full bg-slate-950 border border-slate-700 rounded p-1.5 text-xs text-white"
+                      >
+                        <optgroup label="Emoji Presets">
+                          {LOGO_PRESETS.map((logo) => (
+                            <option key={logo} value={logo}>{logo} Preset Logo</option>
+                          ))}
+                        </optgroup>
+                        {newTeamLogo.startsWith('http') && (
+                          <option value="custom">🖼️ Uploaded Custom Logo</option>
+                        )}
+                      </select>
+
+                      {/* Custom Upload Input */}
+                      <div>
+                        <input
+                          type="file"
+                          accept="image/*"
+                          onChange={handleLogoUpload}
+                          disabled={uploadingLogo}
+                          className="text-xxs text-slate-400 file:mr-2 file:py-1 file:px-2 file:rounded file:border-0 file:text-xxs file:font-semibold file:bg-blue-600 file:text-white hover:file:bg-blue-500 cursor-pointer"
+                        />
+                        <span className="text-xxs text-slate-500 block mt-0.5">
+                          {uploadingLogo ? 'Uploading logo...' : `Max size limit: ${MAX_FILE_SIZE_MB}MB`}
+                        </span>
+                      </div>
+                    </div>
                   </div>
                 </div>
 
+                {/* Primary Sport */}
                 <div>
                   <label className="block text-xs text-slate-400 mb-1">Primary Sport</label>
                   <select
@@ -447,7 +538,10 @@ export default function Home() {
                 </div>
 
                 <div className="flex gap-2">
-                  <button className={`w-full text-xs font-bold py-2 rounded transition ${themeClasses.buttonBg}`}>
+                  <button
+                    disabled={uploadingLogo}
+                    className={`w-full text-xs font-bold py-2 rounded transition ${themeClasses.buttonBg}`}
+                  >
                     {editingTeamId ? 'Save Changes' : 'Create Team'}
                   </button>
                   {editingTeamId && (
@@ -479,8 +573,8 @@ export default function Home() {
                     return (
                       <div key={team.id} className="bg-slate-900 p-3 rounded-lg border border-slate-800 space-y-2 text-xs">
                         <div className="flex justify-between items-center">
-                          <span className="font-bold text-white text-sm">
-                            {team.logo_url} {team.team_name} <span className="text-xxs font-normal text-slate-400">({team.sport})</span>
+                          <span className="font-bold text-white text-sm flex items-center gap-1.5">
+                            <TeamLogo logo={team.logo_url} /> {team.team_name} <span className="text-xxs font-normal text-slate-400">({team.sport})</span>
                           </span>
                           <div className="flex gap-1">
                             <button
@@ -735,7 +829,9 @@ export default function Home() {
               >
                 <option value="">Select your team...</option>
                 {myTeams.map((t) => (
-                  <option key={t.id} value={t.id}>{t.logo_url} {t.team_name} ({t.sport})</option>
+                  <option key={t.id} value={t.id}>
+                    {t.logo_url?.startsWith('http') ? '🖼️' : t.logo_url} {t.team_name} ({t.sport})
+                  </option>
                 ))}
               </select>
             </div>
@@ -751,7 +847,9 @@ export default function Home() {
                 {teams
                   .filter((t) => t.captain_id !== currentStudent?.id)
                   .map((t) => (
-                    <option key={t.id} value={t.id}>{t.logo_url} {t.team_name} ({t.sport})</option>
+                    <option key={t.id} value={t.id}>
+                      {t.logo_url?.startsWith('http') ? '🖼️' : t.logo_url} {t.team_name} ({t.sport})
+                    </option>
                   ))}
               </select>
             </div>
@@ -802,10 +900,12 @@ export default function Home() {
                 return (
                   <div key={match.id} className="bg-slate-950 p-4 rounded-xl border border-slate-800 flex justify-between items-center text-xs">
                     <div>
-                      <span className="font-bold text-white block">
-                        {chalTeam?.logo_url || '🛡️'} {chalTeam?.team_name || 'Challenger'} vs {oppTeam?.logo_url || '🛡️'} {oppTeam?.team_name || 'Opponent'}
+                      <span className="font-bold text-white flex items-center gap-1.5">
+                        <TeamLogo logo={chalTeam?.logo_url} /> {chalTeam?.team_name || 'Challenger'}
+                        <span className="text-slate-500 font-normal">vs</span>
+                        <TeamLogo logo={oppTeam?.logo_url} /> {oppTeam?.team_name || 'Opponent'}
                       </span>
-                      <span className="text-slate-400 block text-xxs">Sport: {match.sport}</span>
+                      <span className="text-slate-400 block text-xxs mt-1">Sport: {match.sport}</span>
                       <span className="text-slate-400 block text-xxs">
                         Time: {match.match_time ? new Date(match.match_time).toLocaleString() : match.match_date}
                       </span>
