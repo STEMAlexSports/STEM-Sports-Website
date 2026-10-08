@@ -5,7 +5,8 @@ import { useRouter } from 'next/navigation';
 import { createClient } from '@supabase/supabase-js';
 
 const SUPABASE_URL = "https://agmumcfifdxwcydzpgqr.supabase.co";
-const SUPABASE_ANON_KEY = "sb_publishable_5K3yRDY12-Oxw078i2mk0A_GV4tDBG1";
+// ⚠️ REPLACE THE STRING BELOW WITH YOUR ACTUAL ANON KEY FROM SUPABASE (starts with eyJ...)
+const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImFnbXVtY2ZpZmR4d2N5ZHpwZ3FyIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTEzODYzNjAsImV4cCI6MjEwNjk2MjM2MH0.ELpZRnnvULXqzteXCinGoZAY0Nrxau0-6qFb0vI2_iE";
 
 const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
@@ -36,7 +37,7 @@ export default function AdminPage() {
       const { data: { session }, error: sessionError } = await supabase.auth.getSession();
 
       if (sessionError || !session?.user) {
-        alert("Auth Error: You are not logged in. Please sign in on the main home page first.");
+        alert("Auth Error: You are not logged in. Please sign in on the home page first.");
         router.push('/');
         return;
       }
