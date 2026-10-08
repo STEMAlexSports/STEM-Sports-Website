@@ -42,9 +42,13 @@ export default function Home() {
   const [selectedCompId, setSelectedCompId] = useState(null);
   const [teamToRegisterId, setTeamToRegisterId] = useState('');
 
-  // Registration States
+  // Auth Card Mode ('login' | 'register')
+  const [authMode, setAuthMode] = useState('login');
+
+  // Auth Input States
   const [fullName, setFullName] = useState('');
   const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
   const [gender, setGender] = useState('Male');
   const [grade, setGrade] = useState('G10');
   const [className, setClassName] = useState('1A');
@@ -125,7 +129,7 @@ export default function Home() {
     }
   }
 
-  // Upload Custom Logo
+  // Custom Logo Upload
   async function handleLogoUpload(e) {
     const file = e.target.files[0];
     if (!file) return;
@@ -164,10 +168,40 @@ export default function Home() {
     }
   }
 
-  // Register / Login
+  // Handle Sign In with Password Verification
+  async function handleSignIn(e) {
+    e.preventDefault();
+    const cleanEmail = email.trim().toLowerCase();
+    if (!cleanEmail.endsWith('@stemalex.moe.edu.eg')) {
+      return alert('Invalid email! Must end with @stemalex.moe.edu.eg');
+    }
+    if (!password) return alert('Please enter your password.');
+
+    const { data: existing, error } = await supabase
+      .from('profiles')
+      .select('*')
+      .eq('email', cleanEmail)
+      .single();
+
+    if (error || !existing) {
+      return alert('Account not found! Please check your email or Register a new account.');
+    }
+
+    if (existing.password && existing.password !== password) {
+      return alert('Incorrect password! Please try again.');
+    }
+
+    localStorage.setItem('stem_student_email', cleanEmail);
+    setCurrentStudent(existing);
+    setPassword('');
+    alert(`Welcome back, ${existing.full_name}! 🏆`);
+  }
+
+  // Handle Account Registration with Password Setup
   async function handleRegister(e) {
     e.preventDefault();
     if (!fullName.trim()) return alert('Please enter your full name.');
+    if (!password || password.length < 4) return alert('Password must be at least 4 characters long.');
 
     const cleanEmail = email.trim().toLowerCase();
     if (!cleanEmail.endsWith('@stemalex.moe.edu.eg')) {
@@ -189,15 +223,13 @@ export default function Home() {
       .single();
 
     if (existing) {
-      localStorage.setItem('stem_student_email', cleanEmail);
-      setCurrentStudent(existing);
-      alert(`Welcome back, ${existing.full_name}!`);
-      return;
+      return alert('An account with this email already exists! Please switch to Sign In.');
     }
 
     const newProfile = {
       full_name: fullName,
       email: cleanEmail,
+      password,
       gender,
       grade,
       class_name: className,
@@ -214,6 +246,7 @@ export default function Home() {
       alert('Account registered successfully! 🏆');
       setFullName('');
       setEmail('');
+      setPassword('');
       fetchData();
     }
   }
@@ -240,7 +273,7 @@ export default function Home() {
     }
   }
 
-  // Respond to Team Joining Request (Accept/Decline)
+  // Respond to Team Invitation
   async function handleRespondTeamInvite(membershipId, accept) {
     if (accept) {
       const { error } = await supabase
@@ -267,7 +300,6 @@ export default function Home() {
     }
   }
 
-  // Leave a team (Member self-leave)
   async function handleLeaveTeam(membershipId) {
     if (!confirm('Are you sure you want to leave this team?')) return;
     const { error } = await supabase.from('team_members').delete().eq('id', membershipId);
@@ -411,7 +443,6 @@ export default function Home() {
     }
   }
 
-  // Send Join Request to Student (Captain invites Student)
   async function handleAddClanMember(teamId) {
     if (!selectedStudentToAdd) return alert('Please select a student to invite.');
 
@@ -419,7 +450,7 @@ export default function Home() {
       { team_id: teamId, student_id: selectedStudentToAdd, role: 'Member', status: 'pending' },
     ]);
 
-    if (error) alert('Could not send invite (Student might already be invited or in team): ' + error.message);
+    if (error) alert('Could not send invite: ' + error.message);
     else {
       alert('Team invitation sent! The student will join once they accept.');
       setSelectedStudentToAdd('');
@@ -522,11 +553,9 @@ export default function Home() {
         navActive: 'bg-blue-600 text-white font-bold shadow-lg',
       };
 
-  // Teams where current student is Captain
   const myCreatedTeams = teams.filter((t) => t.captain_id === currentStudent?.id);
   const myCreatedTeamIds = myCreatedTeams.map((t) => t.id);
 
-  // Teams student belongs to (both Captain and Accepted Member)
   const myAcceptedMemberships = teamMembers.filter(
     (tm) => tm.student_id === currentStudent?.id && (tm.status === 'accepted' || !tm.status)
   );
@@ -538,12 +567,10 @@ export default function Home() {
     })
     .filter(Boolean);
 
-  // Incoming Team Join Invitations for current student
   const incomingTeamInvites = teamMembers.filter(
     (tm) => tm.student_id === currentStudent?.id && tm.status === 'pending'
   );
 
-  // Incoming Match Challenges for teams where current student is Captain
   const incomingMatchChallenges = matches.filter(
     (m) => myCreatedTeamIds.includes(m.opponent_team_id) && m.status === 'pending'
   );
@@ -551,7 +578,6 @@ export default function Home() {
   const selectedComp = competitions.find((c) => c.id === selectedCompId);
   const selectedCompParticipants = compParticipants.filter((p) => p.competition_id === selectedCompId);
 
-  // My Joined Competition Entries
   const myJoinedCompEntries = compParticipants.filter(
     (p) => p.student_id === currentStudent?.id || myCreatedTeamIds.includes(p.team_id)
   );
@@ -711,7 +737,6 @@ export default function Home() {
 
               {/* 4-Card Dashboard Grid */}
               <div className="grid md:grid-cols-2 lg:grid-cols-4 gap-6 text-sm">
-                {/* Personal Info */}
                 <div className="bg-slate-950/60 p-4 rounded-xl border border-slate-800 space-y-2 flex flex-col justify-between">
                   <div>
                     <h3 className="font-bold text-slate-300 border-b border-slate-800 pb-2 mb-2">Personal Details</h3>
@@ -723,7 +748,6 @@ export default function Home() {
                   <span className="text-xxs text-amber-400 font-bold block pt-2">Registered Student</span>
                 </div>
 
-                {/* My Teams (Both Captain & Accepted Member) */}
                 <div className="bg-slate-950/60 p-4 rounded-xl border border-slate-800 space-y-2 flex flex-col justify-between">
                   <div>
                     <div className="flex justify-between items-center border-b border-slate-800 pb-2 mb-2">
@@ -763,7 +787,6 @@ export default function Home() {
                   </button>
                 </div>
 
-                {/* My Joined Competitions */}
                 <div className="bg-slate-950/60 p-4 rounded-xl border border-slate-800 space-y-2 flex flex-col justify-between">
                   <div>
                     <div className="flex justify-between items-center border-b border-slate-800 pb-2 mb-2">
@@ -803,7 +826,6 @@ export default function Home() {
                   </button>
                 </div>
 
-                {/* My Equipment Donations */}
                 <div className="bg-slate-950/60 p-4 rounded-xl border border-slate-800 space-y-2 flex flex-col justify-between">
                   <div>
                     <h3 className="font-bold text-slate-300 border-b border-slate-800 pb-2 mb-2">My Contributions</h3>
@@ -830,82 +852,164 @@ export default function Home() {
               </div>
             </section>
           ) : (
+            /* Secure Student Login / Registration Section */
             <section className={`p-6 rounded-2xl border shadow-xl ${themeClasses.cardBg}`}>
-              <h2 className={`text-2xl font-bold mb-2 ${themeClasses.accentText}`}>Student Account Registration</h2>
-              <p className="text-xs text-slate-400 mb-6">Create your official student account to access tournaments and team building.</p>
-
-              <form onSubmit={handleRegister} className="grid md:grid-cols-2 gap-4 text-sm">
-                <div>
-                  <label className="block text-xs text-slate-300 mb-1">Full Name</label>
-                  <input
-                    type="text"
-                    required
-                    placeholder="e.g. Philopateer Gerges"
-                    value={fullName}
-                    onChange={(e) => setFullName(e.target.value)}
-                    className="w-full bg-slate-950 border border-slate-700 rounded-lg p-2.5 text-white focus:outline-none"
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-xs text-slate-300 mb-1">School Email (@stemalex.moe.edu.eg)</label>
-                  <input
-                    type="email"
-                    required
-                    placeholder="student@stemalex.moe.edu.eg"
-                    value={email}
-                    onChange={(e) => setEmail(e.target.value)}
-                    className="w-full bg-slate-950 border border-slate-700 rounded-lg p-2.5 text-white focus:outline-none"
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-xs text-slate-300 mb-1">Gender</label>
-                  <select
-                    value={gender}
-                    onChange={(e) => setGender(e.target.value)}
-                    className="w-full bg-slate-950 border border-slate-700 rounded-lg p-2.5 text-white"
-                  >
-                    <option value="Male">Male (Blue Theme)</option>
-                    <option value="Female">Female (Pink Theme)</option>
-                  </select>
-                </div>
-
-                <div>
-                  <label className="block text-xs text-slate-300 mb-1">Grade</label>
-                  <select
-                    value={grade}
-                    onChange={(e) => setGrade(e.target.value)}
-                    className="w-full bg-slate-950 border border-slate-700 rounded-lg p-2.5 text-white"
-                  >
-                    <option value="G10">Grade 10</option>
-                    <option value="G11">Grade 11</option>
-                    <option value="G12">Grade 12</option>
-                  </select>
-                </div>
-
-                <div className="md:col-span-2">
-                  <label className="block text-xs text-slate-300 mb-1">
-                    Class Section ({gender === 'Male' ? 'A, B, C for Boys' : 'D, E, F for Girls'})
-                  </label>
-                  <select
-                    value={className}
-                    onChange={(e) => setClassName(e.target.value)}
-                    className="w-full bg-slate-950 border border-slate-700 rounded-lg p-2.5 text-white"
-                  >
-                    {(gender === 'Male'
-                      ? [`${grade === 'G10' ? '1' : grade === 'G11' ? '2' : '3'}A`, `${grade === 'G10' ? '1' : grade === 'G11' ? '2' : '3'}B`, `${grade === 'G10' ? '1' : grade === 'G11' ? '2' : '3'}C`]
-                      : [`${grade === 'G10' ? '1' : grade === 'G11' ? '2' : '3'}D`, `${grade === 'G10' ? '1' : grade === 'G11' ? '2' : '3'}E`, `${grade === 'G10' ? '1' : grade === 'G11' ? '2' : '3'}F`]
-                    ).map((c) => (
-                      <option key={c} value={c}>{c}</option>
-                    ))}
-                  </select>
-                </div>
-
-                <button className={`md:col-span-2 mt-2 font-bold py-3 rounded-lg transition ${themeClasses.buttonBg}`}>
-                  Register / Sign In
+              {/* Auth Mode Toggle */}
+              <div className="flex gap-2 border-b border-slate-800 pb-4 mb-6">
+                <button
+                  type="button"
+                  onClick={() => setAuthMode('login')}
+                  className={`px-5 py-2 rounded-xl text-xs font-bold transition ${
+                    authMode === 'login'
+                      ? 'bg-blue-600 text-white shadow-lg'
+                      : 'bg-slate-950 text-slate-400 hover:text-white'
+                  }`}
+                >
+                  🔒 Sign In
                 </button>
-              </form>
+                <button
+                  type="button"
+                  onClick={() => setAuthMode('register')}
+                  className={`px-5 py-2 rounded-xl text-xs font-bold transition ${
+                    authMode === 'register'
+                      ? 'bg-emerald-600 text-white shadow-lg'
+                      : 'bg-slate-950 text-slate-400 hover:text-white'
+                  }`}
+                >
+                  ✨ Register Account
+                </button>
+              </div>
+
+              {/* SIGN IN FORM */}
+              {authMode === 'login' && (
+                <form onSubmit={handleSignIn} className="space-y-4 max-w-md mx-auto text-sm">
+                  <div>
+                    <h2 className="text-2xl font-bold text-white mb-1">Student Sign In</h2>
+                    <p className="text-xs text-slate-400 mb-4">Enter your school email and password to access your account.</p>
+                  </div>
+
+                  <div>
+                    <label className="block text-xs text-slate-300 mb-1">School Email (@stemalex.moe.edu.eg)</label>
+                    <input
+                      type="email"
+                      required
+                      placeholder="student@stemalex.moe.edu.eg"
+                      value={email}
+                      onChange={(e) => setEmail(e.target.value)}
+                      className="w-full bg-slate-950 border border-slate-700 rounded-lg p-2.5 text-white focus:outline-none"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-xs text-slate-300 mb-1">Password</label>
+                    <input
+                      type="password"
+                      required
+                      placeholder="••••••••"
+                      value={password}
+                      onChange={(e) => setPassword(e.target.value)}
+                      className="w-full bg-slate-950 border border-slate-700 rounded-lg p-2.5 text-white focus:outline-none"
+                    />
+                  </div>
+
+                  <button className={`w-full font-bold py-3 rounded-lg transition ${themeClasses.buttonBg}`}>
+                    Sign In
+                  </button>
+                </form>
+              )}
+
+              {/* REGISTER FORM */}
+              {authMode === 'register' && (
+                <form onSubmit={handleRegister} className="grid md:grid-cols-2 gap-4 text-sm">
+                  <div className="md:col-span-2">
+                    <h2 className="text-2xl font-bold text-white mb-1">Create Student Profile</h2>
+                    <p className="text-xs text-slate-400 mb-2">Register your account to access tournaments and manage teams.</p>
+                  </div>
+
+                  <div>
+                    <label className="block text-xs text-slate-300 mb-1">Full Name</label>
+                    <input
+                      type="text"
+                      required
+                      placeholder="e.g. Philopateer Gerges"
+                      value={fullName}
+                      onChange={(e) => setFullName(e.target.value)}
+                      className="w-full bg-slate-950 border border-slate-700 rounded-lg p-2.5 text-white focus:outline-none"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-xs text-slate-300 mb-1">School Email (@stemalex.moe.edu.eg)</label>
+                    <input
+                      type="email"
+                      required
+                      placeholder="student@stemalex.moe.edu.eg"
+                      value={email}
+                      onChange={(e) => setEmail(e.target.value)}
+                      className="w-full bg-slate-950 border border-slate-700 rounded-lg p-2.5 text-white focus:outline-none"
+                    />
+                  </div>
+
+                  <div className="md:col-span-2">
+                    <label className="block text-xs text-slate-300 mb-1">Create Password (min. 4 characters)</label>
+                    <input
+                      type="password"
+                      required
+                      placeholder="••••••••"
+                      value={password}
+                      onChange={(e) => setPassword(e.target.value)}
+                      className="w-full bg-slate-950 border border-slate-700 rounded-lg p-2.5 text-white focus:outline-none"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-xs text-slate-300 mb-1">Gender</label>
+                    <select
+                      value={gender}
+                      onChange={(e) => setGender(e.target.value)}
+                      className="w-full bg-slate-950 border border-slate-700 rounded-lg p-2.5 text-white"
+                    >
+                      <option value="Male">Male (Blue Theme)</option>
+                      <option value="Female">Female (Pink Theme)</option>
+                    </select>
+                  </div>
+
+                  <div>
+                    <label className="block text-xs text-slate-300 mb-1">Grade</label>
+                    <select
+                      value={grade}
+                      onChange={(e) => setGrade(e.target.value)}
+                      className="w-full bg-slate-950 border border-slate-700 rounded-lg p-2.5 text-white"
+                    >
+                      <option value="G10">Grade 10</option>
+                      <option value="G11">Grade 11</option>
+                      <option value="G12">Grade 12</option>
+                    </select>
+                  </div>
+
+                  <div className="md:col-span-2">
+                    <label className="block text-xs text-slate-300 mb-1">
+                      Class Section ({gender === 'Male' ? 'A, B, C for Boys' : 'D, E, F for Girls'})
+                    </label>
+                    <select
+                      value={className}
+                      onChange={(e) => setClassName(e.target.value)}
+                      className="w-full bg-slate-950 border border-slate-700 rounded-lg p-2.5 text-white"
+                    >
+                      {(gender === 'Male'
+                        ? [`${grade === 'G10' ? '1' : grade === 'G11' ? '2' : '3'}A`, `${grade === 'G10' ? '1' : grade === 'G11' ? '2' : '3'}B`, `${grade === 'G10' ? '1' : grade === 'G11' ? '2' : '3'}C`]
+                        : [`${grade === 'G10' ? '1' : grade === 'G11' ? '2' : '3'}D`, `${grade === 'G10' ? '1' : grade === 'G11' ? '2' : '3'}E`, `${grade === 'G10' ? '1' : grade === 'G11' ? '2' : '3'}F`]
+                      ).map((c) => (
+                        <option key={c} value={c}>{c}</option>
+                      ))}
+                    </select>
+                  </div>
+
+                  <button className="md:col-span-2 mt-2 font-bold py-3 rounded-lg transition bg-emerald-600 hover:bg-emerald-500 text-white">
+                    Create Account & Register
+                  </button>
+                </form>
+              )}
             </section>
           )}
         </div>
@@ -954,7 +1058,7 @@ export default function Home() {
             </section>
           )}
 
-          {/* Teams I Am In Section (As Captain or Member) */}
+          {/* Teams I Am In Section */}
           <section className="bg-slate-900/90 p-6 rounded-2xl border border-slate-800 space-y-4">
             <h2 className="text-xl font-bold text-white flex items-center gap-2">
               <span>🛡️</span> All Teams I Belong To ({myJoinedTeams.length})
@@ -991,7 +1095,6 @@ export default function Home() {
                         </div>
                       </div>
 
-                      {/* Roster List */}
                       <div>
                         <span className="text-xxs font-bold text-slate-400 uppercase block mb-1">Active Clan Roster:</span>
                         <ul className="space-y-1">
@@ -1013,7 +1116,7 @@ export default function Home() {
             )}
           </section>
 
-          {/* Create & Manage Teams Section (As Captain) */}
+          {/* Create & Manage Teams Section */}
           <div className="grid md:grid-cols-2 gap-6">
             <section className="bg-slate-900/90 p-6 rounded-2xl border border-slate-800 space-y-4">
               <h2 className="text-xl font-bold text-cyan-400">
@@ -1182,7 +1285,6 @@ export default function Home() {
                             </ul>
                           )}
 
-                          {/* Invite Student to Team */}
                           <div className="mt-2.5 flex gap-1 pt-1 border-t border-slate-800">
                             <select
                               value={selectedStudentToAdd}
