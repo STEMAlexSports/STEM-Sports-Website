@@ -32,10 +32,15 @@ export default function Home() {
   const [teams, setTeams] = useState([]);
   const [teamMembers, setTeamMembers] = useState([]);
   const [competitions, setCompetitions] = useState([]);
+  const [compParticipants, setCompParticipants] = useState([]);
   const [userDonations, setUserDonations] = useState([]);
 
   // Active Session
   const [currentStudent, setCurrentStudent] = useState(null);
+
+  // Selected Competition View
+  const [selectedCompId, setSelectedCompId] = useState(null);
+  const [teamToRegisterId, setTeamToRegisterId] = useState('');
 
   // Registration States
   const [fullName, setFullName] = useState('');
@@ -58,7 +63,7 @@ export default function Home() {
   const [matchSport, setMatchSport] = useState('Football');
   const [matchDateTime, setMatchDateTime] = useState('');
 
-  // Auto-login from localStorage
+  // Restore Session
   useEffect(() => {
     async function restoreSession() {
       const savedEmail = localStorage.getItem('stem_student_email');
@@ -75,7 +80,7 @@ export default function Home() {
     restoreSession();
   }, []);
 
-  // Class selection rules based on grade & gender
+  // Class selection rules
   useEffect(() => {
     const prefix = grade === 'G10' ? '1' : grade === 'G11' ? '2' : '3';
     if (gender === 'Male') {
@@ -96,13 +101,20 @@ export default function Home() {
     const { data: teamData } = await supabase.from('teams').select('*');
     const { data: tmData } = await supabase.from('team_members').select('*');
     const { data: compData } = await supabase.from('competitions').select('*');
+    const { data: partData } = await supabase.from('competition_participants').select('*').order('score', { ascending: false });
 
     if (fundData) setFundraising(fundData);
     if (matchData) setMatches(matchData);
     if (profData) setStudents(profData);
     if (teamData) setTeams(teamData);
     if (tmData) setTeamMembers(tmData);
-    if (compData) setCompetitions(compData);
+    if (compData) {
+      setCompetitions(compData);
+      if (!selectedCompId && compData.length > 0) {
+        setSelectedCompId(compData[0].id);
+      }
+    }
+    if (partData) setCompParticipants(partData);
 
     if (currentStudent) {
       const { data: donData } = await supabase
@@ -113,7 +125,7 @@ export default function Home() {
     }
   }
 
-  // Upload custom logo with 2MB limit
+  // Upload Custom Logo
   async function handleLogoUpload(e) {
     const file = e.target.files[0];
     if (!file) return;
@@ -123,7 +135,7 @@ export default function Home() {
     }
 
     if (file.size > MAX_FILE_SIZE_MB * 1024 * 1024) {
-      return alert(`File is too large (${(file.size / (1024 * 1024)).toFixed(2)} MB). Limit is ${MAX_FILE_SIZE_MB} MB.`);
+      return alert(`File is too large (${(file.size / (1024 * 1024)).toFixed(2)} MB). Max limit is ${MAX_FILE_SIZE_MB} MB.`);
     }
 
     setUploadingLogo(true);
@@ -152,7 +164,7 @@ export default function Home() {
     }
   }
 
-  // Register / Sign In
+  // Register / Login
   async function handleRegister(e) {
     e.preventDefault();
     if (!fullName.trim()) return alert('Please enter your full name.');
@@ -228,7 +240,87 @@ export default function Home() {
     }
   }
 
-  // Save or Edit Team
+  // Join Individual Competition
+  async function handleJoinIndividualComp(compId) {
+    if (!currentStudent) return alert('Please log in first.');
+
+    // Check if already joined
+    const exists = compParticipants.some(
+      (p) => p.competition_id === compId && p.student_id === currentStudent.id
+    );
+    if (exists) return alert('You are already registered in this competition!');
+
+    const { error } = await supabase.from('competition_participants').insert([
+      { competition_id: compId, student_id: currentStudent.id, score: 0 },
+    ]);
+
+    if (error) alert('Join failed: ' + error.message);
+    else {
+      alert('Successfully registered for competition! 🏅');
+      fetchData();
+    }
+  }
+
+  // Leave Individual Competition
+  async function handleLeaveIndividualComp(participantId) {
+    if (!confirm('Are you sure you want to sign out of this competition?')) return;
+
+    const { error } = await supabase
+      .from('competition_participants')
+      .delete()
+      .eq('id', participantId);
+
+    if (error) alert('Error leaving competition: ' + error.message);
+    else {
+      alert('Signed out of competition.');
+      fetchData();
+    }
+  }
+
+  // Join Team Competition (Captain only)
+  async function handleJoinTeamComp(compId) {
+    if (!currentStudent) return alert('Please log in first.');
+    if (!teamToRegisterId) return alert('Please select a team to register.');
+
+    const teamObj = teams.find((t) => t.id === teamToRegisterId);
+    if (teamObj?.captain_id !== currentStudent.id) {
+      return alert('Only the team captain can register the team into competitions!');
+    }
+
+    const exists = compParticipants.some(
+      (p) => p.competition_id === compId && p.team_id === teamToRegisterId
+    );
+    if (exists) return alert('This team is already registered in this competition!');
+
+    const { error } = await supabase.from('competition_participants').insert([
+      { competition_id: compId, team_id: teamToRegisterId, score: 0 },
+    ]);
+
+    if (error) alert('Team registration failed: ' + error.message);
+    else {
+      alert(`Team "${teamObj.team_name}" registered for competition! 🛡️`);
+      setTeamToRegisterId('');
+      fetchData();
+    }
+  }
+
+  // Leave Team Competition
+  async function handleLeaveTeamComp(participantId) {
+    if (!confirm('Are you sure you want to withdraw this team from the competition?')) return;
+
+    const { error } = await supabase
+      .from('competition_participants')
+      .delete()
+      .eq('id', participantId);
+
+    if (error) alert('Error withdrawing team: ' + error.message);
+    else {
+      alert('Team withdrawn from competition.');
+      fetchData();
+    }
+  }
+
+  // Team CRUD
   async function handleSaveTeam(e) {
     e.preventDefault();
     if (!currentStudent) return alert('Please log in first.');
@@ -291,9 +383,8 @@ export default function Home() {
       { team_id: teamId, student_id: selectedStudentToAdd, role: 'Member' },
     ]);
 
-    if (error) {
-      alert('Could not add member: ' + error.message);
-    } else {
+    if (error) alert('Could not add member: ' + error.message);
+    else {
       alert('Clan member added successfully!');
       setSelectedStudentToAdd('');
       fetchData();
@@ -329,9 +420,8 @@ export default function Home() {
       },
     ]);
 
-    if (error) {
-      alert('Error creating match challenge: ' + error.message);
-    } else {
+    if (error) alert('Error creating match challenge: ' + error.message);
+    else {
       alert('Friendly Match Challenge sent to Opponent Leader!');
       setChallengerTeamId('');
       setOpponentTeamId('');
@@ -346,9 +436,8 @@ export default function Home() {
       .update({ status: newStatus })
       .eq('id', matchId);
 
-    if (error) {
-      alert('Status update failed: ' + error.message);
-    } else {
+    if (error) alert('Status update failed: ' + error.message);
+    else {
       alert(`Match challenge ${newStatus}!`);
       fetchData();
     }
@@ -377,7 +466,7 @@ export default function Home() {
     }
   }
 
-  // Dynamic Gender Themes
+  // Dynamic Themes
   const isFemale = currentStudent?.gender === 'Female';
   const themeClasses = isFemale
     ? {
@@ -403,7 +492,14 @@ export default function Home() {
     (m) => myTeamIds.includes(m.opponent_team_id) && m.status === 'pending'
   );
 
-  // Group class standings for STEM SPORTS CLASS
+  const selectedComp = competitions.find((c) => c.id === selectedCompId);
+  const selectedCompParticipants = compParticipants.filter((p) => p.competition_id === selectedCompId);
+
+  // My Joined Competitions
+  const myJoinedCompIds = compParticipants
+    .filter((p) => p.student_id === currentStudent?.id || myTeamIds.includes(p.team_id))
+    .map((p) => p.competition_id);
+
   const classStandings = students.reduce((acc, student) => {
     const cls = student.class_name || 'Unassigned';
     acc[cls] = (acc[cls] || 0) + (student.points || 0);
@@ -481,7 +577,7 @@ export default function Home() {
                 </div>
               </div>
 
-              {/* Incoming Challenge Alerts */}
+              {/* Incoming Challenges */}
               {incomingChallenges.length > 0 && (
                 <div className="mb-6 bg-amber-500/10 border border-amber-500/40 p-4 rounded-xl space-y-3">
                   <h3 className="font-bold text-amber-400 text-sm flex items-center gap-2">
@@ -528,19 +624,19 @@ export default function Home() {
                 </div>
 
                 <div className="bg-slate-950/60 p-4 rounded-xl border border-slate-800 space-y-2">
-                  <h3 className="font-bold text-slate-300 border-b border-slate-800 pb-2">My Quick Stats</h3>
-                  <p><span className="text-slate-400">Teams Managed:</span> {myTeams.length}</p>
-                  <p><span className="text-slate-400">Donations Count:</span> {userDonations.length}</p>
+                  <h3 className="font-bold text-slate-300 border-b border-slate-800 pb-2">My Registered Competitions</h3>
+                  <p className="text-xs text-slate-400">Active tournaments you/your team joined:</p>
+                  <span className="text-lg font-bold text-amber-400">{myJoinedCompIds.length} Joined</span>
                   <button
-                    onClick={() => setActiveTab('teams')}
+                    onClick={() => setActiveTab('competitions')}
                     className="mt-2 w-full bg-slate-800 hover:bg-slate-700 text-xs py-1.5 rounded text-cyan-300 font-bold"
                   >
-                    Go to Team Management →
+                    View All Competitions →
                   </button>
                 </div>
 
                 <div className="bg-slate-950/60 p-4 rounded-xl border border-slate-800 space-y-2">
-                  <h3 className="font-bold text-slate-300 border-b border-slate-800 pb-2">My Donations</h3>
+                  <h3 className="font-bold text-slate-300 border-b border-slate-800 pb-2">My Contributions</h3>
                   {userDonations.length === 0 ? (
                     <p className="text-xs text-slate-500">No equipment donations yet.</p>
                   ) : (
@@ -557,7 +653,6 @@ export default function Home() {
               </div>
             </section>
           ) : (
-            /* Registration Form if Logged Out */
             <section className={`p-6 rounded-2xl border shadow-xl ${themeClasses.cardBg}`}>
               <h2 className={`text-2xl font-bold mb-2 ${themeClasses.accentText}`}>Student Account Registration</h2>
               <p className="text-xs text-slate-400 mb-6">Create your official student account to access tournaments and team building.</p>
@@ -623,7 +718,7 @@ export default function Home() {
                   >
                     {(gender === 'Male'
                       ? [`${grade === 'G10' ? '1' : grade === 'G11' ? '2' : '3'}A`, `${grade === 'G10' ? '1' : grade === 'G11' ? '2' : '3'}B`, `${grade === 'G10' ? '1' : grade === 'G11' ? '2' : '3'}C`]
-                      : [`${grade === 'G10' ? '1' : grade === 'G11' ? '2' : '3'}D`, `${grade === 'G10' ? '1' : grade === 'G11' ? '2' : '3'}E`, `${grade === 'G10' ? '1' : grade === 'G11' ? '2' : '3'}F`]
+                      : [`${grade === 'G10' ? '1' : grade === 'G10' ? '2' : '3'}D`, `${grade === 'G10' ? '1' : grade === 'G11' ? '2' : '3'}E`, `${grade === 'G10' ? '1' : grade === 'G11' ? '2' : '3'}F`]
                     ).map((c) => (
                       <option key={c} value={c}>{c}</option>
                     ))}
@@ -944,55 +1039,205 @@ export default function Home() {
         </div>
       )}
 
-      {/* 4. COMPETITIONS PAGE */}
+      {/* 4. COMPETITIONS PAGE (WITH ROSTERS & SPECIFIC LEADERBOARDS) */}
       {activeTab === 'competitions' && (
-        <section className="bg-slate-900/90 p-6 rounded-2xl border border-slate-800 space-y-6">
-          <div className="flex justify-between items-center border-b border-slate-800 pb-4">
-            <div>
-              <h2 className="text-2xl font-bold text-yellow-400">🏆 Official School Competitions</h2>
-              <p className="text-xs text-slate-400 mt-1">Inter-class cups, house leagues, and STEM tournaments.</p>
-            </div>
-            <span className="bg-yellow-500/20 text-yellow-300 border border-yellow-500/30 text-xs px-3 py-1 rounded-full font-bold">
-              {competitions.length} Tournaments Listed
-            </span>
-          </div>
+        <div className="grid md:grid-cols-3 gap-6">
+          {/* Competition Selector List */}
+          <section className="bg-slate-900/90 p-5 rounded-2xl border border-slate-800 space-y-3">
+            <h2 className="text-lg font-bold text-yellow-400 border-b border-slate-800 pb-2">
+              🏆 Tournaments
+            </h2>
+            <div className="space-y-2">
+              {competitions.map((comp) => {
+                const isSelected = comp.id === selectedCompId;
+                const isTeamComp = comp.type === 'team';
 
-          <div className="grid md:grid-cols-3 gap-6">
-            {competitions.length === 0 ? (
-              <p className="text-xs text-slate-500 col-span-3">No active tournaments right now. Check back soon!</p>
-            ) : (
-              competitions.map((comp) => (
-                <div key={comp.id} className="bg-slate-950 p-5 rounded-xl border border-slate-800 flex flex-col justify-between space-y-4">
-                  <div>
-                    <div className="flex justify-between items-start mb-2">
-                      <span className="text-xs font-bold text-cyan-400 bg-cyan-950 px-2 py-0.5 rounded border border-cyan-800">
-                        {comp.sport}
+                return (
+                  <div
+                    key={comp.id}
+                    onClick={() => setSelectedCompId(comp.id)}
+                    className={`p-3.5 rounded-xl border cursor-pointer transition ${
+                      isSelected
+                        ? 'bg-amber-500/10 border-amber-500/60 shadow-md'
+                        : 'bg-slate-950 border-slate-800 hover:border-slate-700'
+                    }`}
+                  >
+                    <div className="flex justify-between items-start mb-1">
+                      <span className={`text-xxs px-2 py-0.5 rounded font-bold ${
+                        isTeamComp ? 'bg-purple-500/20 text-purple-300 border border-purple-500/30' : 'bg-cyan-500/20 text-cyan-300 border border-cyan-500/30'
+                      }`}>
+                        {isTeamComp ? '🛡️ Team Event' : '👤 Solo Event'}
                       </span>
-                      <span className="text-xxs bg-emerald-500/20 text-emerald-400 px-2 py-0.5 rounded border border-emerald-500/30 font-semibold">
-                        {comp.status || 'Upcoming'}
-                      </span>
+                      <span className="text-xxs text-slate-400">{comp.sport}</span>
                     </div>
-                    <h3 className="font-bold text-base text-white">{comp.title}</h3>
-                    <p className="text-xs text-slate-400 mt-2">{comp.description}</p>
+                    <h3 className="font-bold text-sm text-white">{comp.title}</h3>
+                  </div>
+                );
+              })}
+            </div>
+          </section>
+
+          {/* Selected Competition Detail, Actions & Specific Leaderboard */}
+          <section className="md:col-span-2 bg-slate-900/90 p-6 rounded-2xl border border-slate-800 space-y-6">
+            {selectedComp ? (
+              <>
+                <div className="flex flex-col md:flex-row justify-between items-start md:items-center border-b border-slate-800 pb-4 gap-3">
+                  <div>
+                    <span className={`text-xs px-2.5 py-0.5 rounded font-bold uppercase ${
+                      selectedComp.type === 'team' ? 'bg-purple-500/20 text-purple-300' : 'bg-cyan-500/20 text-cyan-300'
+                    }`}>
+                      {selectedComp.type === 'team' ? 'Team Competition' : 'Individual Solo Tournament'}
+                    </span>
+                    <h2 className="text-2xl font-bold text-white mt-1">{selectedComp.title}</h2>
+                    <p className="text-xs text-slate-400">{selectedComp.description}</p>
                   </div>
 
-                  <div className="border-t border-slate-800/80 pt-3 flex justify-between items-center text-xs text-slate-400">
-                    <span>Start Date: {comp.start_date || 'TBA'}</span>
-                    <button
-                      onClick={() => alert(`Registered interest for ${comp.title}! Stay tuned for match brackets.`)}
-                      className="bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold px-3 py-1 rounded transition text-xs"
-                    >
-                      Join Tournament
-                    </button>
+                  {/* Join / Leave Logic */}
+                  <div>
+                    {selectedComp.type === 'individual' ? (
+                      (() => {
+                        const myReg = selectedCompParticipants.find((p) => p.student_id === currentStudent?.id);
+                        return myReg ? (
+                          <button
+                            onClick={() => handleLeaveIndividualComp(myReg.id)}
+                            className="bg-rose-600/80 hover:bg-rose-600 text-white font-bold text-xs px-4 py-2 rounded-lg transition"
+                          >
+                            Sign Out of Competition
+                          </button>
+                        ) : (
+                          <button
+                            onClick={() => handleJoinIndividualComp(selectedComp.id)}
+                            className="bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs px-4 py-2 rounded-lg transition"
+                          >
+                            + Join Competition
+                          </button>
+                        );
+                      })()
+                    ) : (
+                      <div className="space-y-2 text-right">
+                        <div className="flex gap-2">
+                          <select
+                            value={teamToRegisterId}
+                            onChange={(e) => setTeamToRegisterId(e.target.value)}
+                            className="bg-slate-950 border border-slate-700 text-xs rounded p-2 text-white"
+                          >
+                            <option value="">Select your created team...</option>
+                            {myTeams.map((t) => (
+                              <option key={t.id} value={t.id}>{t.logo_url} {t.team_name}</option>
+                            ))}
+                          </select>
+                          <button
+                            onClick={() => handleJoinTeamComp(selectedComp.id)}
+                            className="bg-purple-600 hover:bg-purple-500 text-white font-bold text-xs px-3 py-2 rounded transition"
+                          >
+                            Register Team
+                          </button>
+                        </div>
+                        <span className="text-xxs text-slate-500 block">Must be Team Captain to register</span>
+                      </div>
+                    )}
                   </div>
                 </div>
-              ))
+
+                {/* Competition Specific Leaderboard */}
+                <div className="space-y-3">
+                  <h3 className="font-bold text-amber-400 text-sm flex items-center gap-1.5">
+                    🏆 Competition Leaderboard & Scoreboard
+                  </h3>
+
+                  <div className="overflow-x-auto bg-slate-950 rounded-xl border border-slate-800">
+                    <table className="w-full text-left text-xs">
+                      <thead>
+                        <tr className="border-b border-slate-800 text-slate-400">
+                          <th className="p-3">Rank</th>
+                          <th className="p-3">
+                            {selectedComp.type === 'team' ? 'Registered Team' : 'Participant Student'}
+                          </th>
+                          <th className="p-3">
+                            {selectedComp.type === 'team' ? 'Captain / Details' : 'Class / Grade'}
+                          </th>
+                          <th className="p-3">Score / Standing</th>
+                          <th className="p-3">Action</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {selectedCompParticipants.length === 0 ? (
+                          <tr>
+                            <td colSpan="5" className="p-4 text-center text-slate-500">
+                              No participants registered in this competition yet.
+                            </td>
+                          </tr>
+                        ) : (
+                          selectedCompParticipants.map((part, idx) => {
+                            if (selectedComp.type === 'team') {
+                              const teamObj = teams.find((t) => t.id === part.team_id);
+                              const captainObj = students.find((s) => s.id === teamObj?.captain_id);
+                              const isMyTeam = teamObj?.captain_id === currentStudent?.id;
+
+                              return (
+                                <tr key={part.id} className="border-b border-slate-800/50 hover:bg-slate-900/50">
+                                  <td className="p-3 font-bold text-slate-400">#{idx + 1}</td>
+                                  <td className="p-3 font-bold text-white flex items-center gap-1.5">
+                                    <TeamLogo logo={teamObj?.logo_url} /> {teamObj?.team_name || 'Team'}
+                                  </td>
+                                  <td className="p-3 text-slate-400">
+                                    Captain: {captainObj?.full_name || 'Student'} ({captainObj?.class_name})
+                                  </td>
+                                  <td className="p-3 text-amber-400 font-bold">{part.score} pts</td>
+                                  <td className="p-3">
+                                    {isMyTeam && (
+                                      <button
+                                        onClick={() => handleLeaveTeamComp(part.id)}
+                                        className="text-red-400 hover:underline text-xxs"
+                                      >
+                                        Withdraw Team
+                                      </button>
+                                    )}
+                                  </td>
+                                </tr>
+                              );
+                            } else {
+                              const studentObj = students.find((s) => s.id === part.student_id);
+                              const isMe = studentObj?.id === currentStudent?.id;
+
+                              return (
+                                <tr key={part.id} className="border-b border-slate-800/50 hover:bg-slate-900/50">
+                                  <td className="p-3 font-bold text-slate-400">#{idx + 1}</td>
+                                  <td className="p-3 font-bold text-white">
+                                    👤 {studentObj?.full_name || 'Student'}
+                                  </td>
+                                  <td className="p-3 text-slate-400">
+                                    {studentObj?.class_name} ({studentObj?.grade})
+                                  </td>
+                                  <td className="p-3 text-amber-400 font-bold">{part.score} pts</td>
+                                  <td className="p-3">
+                                    {isMe && (
+                                      <button
+                                        onClick={() => handleLeaveIndividualComp(part.id)}
+                                        className="text-red-400 hover:underline text-xxs"
+                                      >
+                                        Sign Out
+                                      </button>
+                                    )}
+                                  </td>
+                                </tr>
+                              );
+                            }
+                          })
+                        )}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              </>
+            ) : (
+              <p className="text-xs text-slate-500">Select a competition to view details.</p>
             )}
-          </div>
-        </section>
+          </section>
+        </div>
       )}
 
-      {/* 5. LEADERBOARD PAGE */}
+      {/* 5. OVERALL LEADERBOARD PAGE */}
       {activeTab === 'leaderboard' && (
         <section className="bg-slate-900/90 p-6 rounded-2xl border border-slate-800 space-y-4">
           <h2 className="text-2xl font-bold text-amber-400 flex items-center gap-2">
