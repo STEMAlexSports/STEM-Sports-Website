@@ -11,7 +11,7 @@ const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
 export default function AdminPage() {
   const [loading, setLoading] = useState(true);
-  const [activeTab, setActiveTab] = useState('points'); // 'points' or 'competitions'
+  const [activeTab, setActiveTab] = useState('points');
 
   // Data States
   const [teams, setTeams] = useState([]);
@@ -32,25 +32,35 @@ export default function AdminPage() {
 
   useEffect(() => {
     async function initAdminPage() {
+      // 1. Check logged in user
       const { data: { user }, error: userError } = await supabase.auth.getUser();
 
       if (userError || !user) {
+        alert("Auth Error: You are not logged in. Redirecting to home page.");
         router.push('/');
         return;
       }
 
-      const { data: profile } = await supabase
+      // 2. Fetch profile from database
+      const { data: profile, error: profileError } = await supabase
         .from('profiles')
         .select('is_admin')
         .eq('id', user.id)
         .single();
 
-      if (!profile?.is_admin) {
-        alert('Access denied. Admin privileges required.');
+      if (profileError) {
+        alert(`Database Error: Could not read profile. ${profileError.message}`);
         router.push('/');
         return;
       }
 
+      if (!profile?.is_admin) {
+        alert(`Access Denied: Your account is_admin status is set to "${profile?.is_admin}". Required: true.`);
+        router.push('/');
+        return;
+      }
+
+      // 3. User verified as admin
       await fetchAdminData();
       setLoading(false);
     }
@@ -60,21 +70,25 @@ export default function AdminPage() {
 
   async function fetchAdminData() {
     // Fetch Teams
-    const { data: teamsData } = await supabase
+    const { data: teamsData, error: teamsError } = await supabase
       .from('teams')
       .select('*')
       .order('points', { ascending: false });
+    
     if (teamsData) setTeams(teamsData);
+    if (teamsError) console.error("Error fetching teams:", teamsError.message);
 
     // Fetch Competitions
-    const { data: compData } = await supabase
+    const { data: compData, error: compError } = await supabase
       .from('competitions')
       .select('*')
       .order('created_at', { ascending: false });
+    
     if (compData) setCompetitions(compData);
+    if (compError) console.error("Error fetching competitions:", compError.message);
   }
 
-  // 1. Handle Awarding Points
+  // Handle Awarding Points
   async function handleAddPoints(e) {
     e.preventDefault();
     setPointActionMsg('');
@@ -103,7 +117,7 @@ export default function AdminPage() {
     }
   }
 
-  // 2. Handle Creating Competitions
+  // Handle Creating Competitions
   async function handleCreateCompetition(e) {
     e.preventDefault();
     setCompActionMsg('');
