@@ -31,15 +31,17 @@ export default function AdminPage() {
   const router = useRouter();
 
   useEffect(() => {
-    async function initAdminPage() {
-      // 1. Check logged in user
-      const { data: { user }, error: userError } = await supabase.auth.getUser();
+    async function verifyAdminAccess() {
+      // 1. Get session stored in browser
+      const { data: { session }, error: sessionError } = await supabase.auth.getSession();
 
-      if (userError || !user) {
-        alert("Auth Error: You are not logged in. Redirecting to home page.");
+      if (sessionError || !session?.user) {
+        alert("Auth Error: You are not logged in. Please sign in on the main home page first.");
         router.push('/');
         return;
       }
+
+      const user = session.user;
 
       // 2. Fetch profile from database
       const { data: profile, error: profileError } = await supabase
@@ -55,7 +57,7 @@ export default function AdminPage() {
       }
 
       if (!profile?.is_admin) {
-        alert(`Access Denied: Your account is_admin status is set to "${profile?.is_admin}". Required: true.`);
+        alert(`Access Denied: Account ${user.email} does not have admin privileges (is_admin = false).`);
         router.push('/');
         return;
       }
@@ -65,7 +67,7 @@ export default function AdminPage() {
       setLoading(false);
     }
 
-    initAdminPage();
+    verifyAdminAccess();
   }, [router]);
 
   async function fetchAdminData() {
