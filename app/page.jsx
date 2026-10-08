@@ -242,7 +242,6 @@ export default function Home() {
 
     setLoadingAuth(true);
     try {
-      // Register with Supabase Auth to trigger email verification code
       const { data, error } = await supabase.auth.signUp({
         email: cleanEmail,
         password: password,
@@ -262,7 +261,6 @@ export default function Home() {
         return;
       }
 
-      // Check if email OTP confirmation is required
       if (!data.session) {
         setAuthMode('otp');
         alert(`Verification code sent to ${cleanEmail}! Please check your inbox and enter the 6-digit code below.`);
@@ -292,7 +290,6 @@ export default function Home() {
       });
 
       if (error) {
-        // Fallback attempt with 'email' type
         const { data: fallbackData, error: fallbackError } = await supabase.auth.verifyOtp({
           email: cleanEmail,
           token: otpCode.trim(),
@@ -326,7 +323,7 @@ export default function Home() {
 
     const { data: profileData, error } = await supabase
       .from('profiles')
-      .upsert([newProfile], { onConflict: 'email' })
+      .upsert([newProfile], { onConflict: 'id' })
       .select()
       .single();
 
@@ -410,7 +407,6 @@ export default function Home() {
   // ADMIN: Approve or Reject Donation
   async function handleAdminDonationResponse(donation, approve) {
     if (approve) {
-      // 1. Update donation status to approved
       const { error: donErr } = await supabase
         .from('donations')
         .update({ status: 'approved' })
@@ -418,7 +414,6 @@ export default function Home() {
 
       if (donErr) return alert('Error updating donation: ' + donErr.message);
 
-      // 2. Increase raised_amount in fundraising table
       const item = fundraising.find((i) => i.id === donation.item_id);
       const newTotal = (Number(item?.raised_amount) || 0) + Number(donation.amount);
 
@@ -427,7 +422,6 @@ export default function Home() {
         .update({ raised_amount: newTotal })
         .eq('id', donation.item_id);
 
-      // 3. Award 10 bonus points to student for real donation
       const student = students.find((s) => s.id === donation.student_id);
       if (student) {
         await supabase
