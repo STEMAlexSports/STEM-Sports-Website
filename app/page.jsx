@@ -49,6 +49,7 @@ export default function Home() {
   const [fullName, setFullName] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
   const [gender, setGender] = useState('Male');
   const [grade, setGrade] = useState('G10');
   const [className, setClassName] = useState('1A');
@@ -902,14 +903,24 @@ export default function Home() {
 
                   <div>
                     <label className="block text-xs text-slate-300 mb-1">Password</label>
-                    <input
-                      type="password"
-                      required
-                      placeholder="••••••••"
-                      value={password}
-                      onChange={(e) => setPassword(e.target.value)}
-                      className="w-full bg-slate-950 border border-slate-700 rounded-lg p-2.5 text-white focus:outline-none"
-                    />
+                    <div className="relative">
+                      <input
+                        type={showPassword ? 'text' : 'password'}
+                        required
+                        placeholder="••••••••"
+                        value={password}
+                        onChange={(e) => setPassword(e.target.value)}
+                        className="w-full bg-slate-950 border border-slate-700 rounded-lg p-2.5 pr-10 text-white focus:outline-none"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => setShowPassword(!showPassword)}
+                        className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-white text-xs select-none"
+                        title={showPassword ? 'Hide password' : 'Show password'}
+                      >
+                        {showPassword ? '👁️' : '🙈'}
+                      </button>
+                    </div>
                   </div>
 
                   <button className={`w-full font-bold py-3 rounded-lg transition ${themeClasses.buttonBg}`}>
@@ -952,14 +963,24 @@ export default function Home() {
 
                   <div className="md:col-span-2">
                     <label className="block text-xs text-slate-300 mb-1">Create Password (min. 4 characters)</label>
-                    <input
-                      type="password"
-                      required
-                      placeholder="••••••••"
-                      value={password}
-                      onChange={(e) => setPassword(e.target.value)}
-                      className="w-full bg-slate-950 border border-slate-700 rounded-lg p-2.5 text-white focus:outline-none"
-                    />
+                    <div className="relative">
+                      <input
+                        type={showPassword ? 'text' : 'password'}
+                        required
+                        placeholder="••••••••"
+                        value={password}
+                        onChange={(e) => setPassword(e.target.value)}
+                        className="w-full bg-slate-950 border border-slate-700 rounded-lg p-2.5 pr-10 text-white focus:outline-none"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => setShowPassword(!showPassword)}
+                        className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-white text-xs select-none"
+                        title={showPassword ? 'Hide password' : 'Show password'}
+                      >
+                        {showPassword ? '👁️' : '🙈'}
+                      </button>
+                    </div>
                   </div>
 
                   <div>
