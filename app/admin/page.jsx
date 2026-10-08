@@ -5,7 +5,6 @@ import { useRouter } from 'next/navigation';
 import { createClient } from '@supabase/supabase-js';
 
 const SUPABASE_URL = "https://agmumcfifdxwcydzpgqr.supabase.co";
-// Ensure this is your valid Anon public key from Supabase Project Settings > API
 const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImFnbXVtY2ZpZmR4d2N5ZHpwZ3FyIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTEzODYzNjAsImV4cCI6MjEwNjk2MjM2MH0.ELpZRnnvULXqzteXCinGoZAY0Nrxau0-6qFb0vI2_iE";
 
 const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
@@ -26,10 +25,11 @@ export default function AdminPage() {
   const [pointsToAdd, setPointsToAdd] = useState('');
   const [pointActionMsg, setPointActionMsg] = useState('');
 
-  // Competition Form State
+  // New Competition Form State
   const [compName, setCompName] = useState('');
-  const [compSport, setCompSport] = useState('');
-  const [compType, setCompType] = useState('team'); // 'team' | 'solo'
+  const [compSport, setCompSport] = useState('Football');
+  const [compType, setCompType] = useState('team'); // 'team' | 'individual'
+  const [compDescription, setCompDescription] = useState('');
   const [compDate, setCompDate] = useState('');
   const [compActionMsg, setCompActionMsg] = useState('');
 
@@ -40,7 +40,7 @@ export default function AdminPage() {
       const { data: { session }, error: sessionError } = await supabase.auth.getSession();
 
       if (sessionError || !session?.user) {
-        alert("Auth Error: You are not logged in. Please sign in on the home page first.");
+        alert("Auth Error: You are not logged in. Please sign in on the main home page first.");
         router.push('/');
         return;
       }
@@ -95,13 +95,13 @@ export default function AdminPage() {
     if (compData) setCompetitions(compData);
   }
 
-  // Award Points to Team or Player
+  // Handle Awarding Points to Team or Player
   async function handleAddPoints(e) {
     e.preventDefault();
     setPointActionMsg('');
 
     if (!pointsToAdd) {
-      setPointActionMsg('Please enter point value.');
+      setPointActionMsg('Please enter a point value.');
       return;
     }
 
@@ -123,7 +123,7 @@ export default function AdminPage() {
       if (error) {
         setPointActionMsg(`Error: ${error.message}`);
       } else {
-        setPointActionMsg(`Success! Updated team ${team.name} score to ${newTotal} pts.`);
+        setPointActionMsg(`Success! Updated team "${team?.team_name || team?.name}" score to ${newTotal} pts.`);
         setPointsToAdd('');
         fetchAdminData();
       }
@@ -143,19 +143,19 @@ export default function AdminPage() {
       if (error) {
         setPointActionMsg(`Error: ${error.message}`);
       } else {
-        setPointActionMsg(`Success! Updated player ${player.full_name || player.email} score to ${newTotal} pts.`);
+        setPointActionMsg(`Success! Updated player "${player.full_name || player.email}" score to ${newTotal} pts.`);
         setPointsToAdd('');
         fetchAdminData();
       }
     }
   }
 
-  // Create Competition
+  // Handle Creating Competitions
   async function handleCreateCompetition(e) {
     e.preventDefault();
     setCompActionMsg('');
 
-    if (!compName || !compSport) {
+    if (!compName.trim() || !compSport) {
       setCompActionMsg('Please enter competition title and sport category.');
       return;
     }
@@ -163,9 +163,10 @@ export default function AdminPage() {
     const { error } = await supabase
       .from('competitions')
       .insert([{ 
-        title: compName, 
+        title: compName.trim(), 
         sport: compSport, 
         type: compType, 
+        description: compDescription.trim() || null,
         date: compDate || null 
       }]);
 
@@ -174,13 +175,15 @@ export default function AdminPage() {
     } else {
       setCompActionMsg(`Success! Created ${compType.toUpperCase()} competition "${compName}".`);
       setCompName('');
-      setCompSport('');
+      setCompSport('Football');
+      setCompType('team');
+      setCompDescription('');
       setCompDate('');
       fetchAdminData();
     }
   }
 
-  // Delete Competition
+  // Handle Deleting Competitions
   async function handleDeleteCompetition(id, title) {
     if (!confirm(`Are you sure you want to delete "${title}"?`)) return;
 
@@ -209,8 +212,8 @@ export default function AdminPage() {
       {/* Header Bar */}
       <div className="max-w-6xl mx-auto flex flex-col md:flex-row justify-between items-start md:items-center mb-8 pb-6 border-b border-slate-800 gap-4">
         <div>
-          <h1 className="text-3xl font-extrabold text-white tracking-tight">Admin Dashboard</h1>
-          <p className="text-slate-400 text-sm mt-1">Manage team/player standings, competitions, and points.</p>
+          <h1 className="text-3xl font-extrabold text-white tracking-tight">👑 Admin Control Dashboard</h1>
+          <p className="text-slate-400 text-sm mt-1">Manage team/player points, leaderboard standings, and tournaments.</p>
         </div>
         <a
           href="/"
@@ -230,7 +233,7 @@ export default function AdminPage() {
               : 'bg-slate-900 text-slate-400 hover:bg-slate-800 hover:text-white'
           }`}
         >
-          ⚡ Manage Points
+          ⚡ Award Points (Teams & Players)
         </button>
         <button
           onClick={() => setActiveTab('competitions')}
@@ -240,7 +243,7 @@ export default function AdminPage() {
               : 'bg-slate-900 text-slate-400 hover:bg-slate-800 hover:text-white'
           }`}
         >
-          🏆 Create & Delete Competitions
+          🏆 Create & Manage Competitions
         </button>
       </div>
 
@@ -249,7 +252,7 @@ export default function AdminPage() {
         {activeTab === 'points' && (
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
             <div className="bg-slate-900 border border-slate-800 rounded-xl p-6 shadow-xl h-fit">
-              <h2 className="text-xl font-bold text-white mb-4">➕ Award Points</h2>
+              <h2 className="text-xl font-bold text-white mb-4">➕ Award / Deduct Points</h2>
               
               {/* Target Switcher */}
               <div className="flex gap-2 mb-4 bg-slate-950 p-1 rounded-lg border border-slate-800">
@@ -260,7 +263,7 @@ export default function AdminPage() {
                     pointTarget === 'team' ? 'bg-indigo-600 text-white' : 'text-slate-400 hover:text-white'
                   }`}
                 >
-                  Team Points
+                  🛡️ Team Points
                 </button>
                 <button
                   type="button"
@@ -269,7 +272,7 @@ export default function AdminPage() {
                     pointTarget === 'player' ? 'bg-indigo-600 text-white' : 'text-slate-400 hover:text-white'
                   }`}
                 >
-                  Player Points
+                  👤 Individual Player Points
                 </button>
               </div>
 
@@ -287,7 +290,7 @@ export default function AdminPage() {
                       <option value="">-- Select Team --</option>
                       {teams.map((t) => (
                         <option key={t.id} value={t.id}>
-                          {t.name} ({t.points || 0} pts)
+                          {t.team_name || t.name} ({t.points || 0} pts)
                         </option>
                       ))}
                     </select>
@@ -295,17 +298,17 @@ export default function AdminPage() {
                 ) : (
                   <div>
                     <label className="block text-xs font-semibold text-slate-400 uppercase tracking-wider mb-2">
-                      Select Player
+                      Select Player / Student
                     </label>
                     <select
                       value={selectedPlayerId}
                       onChange={(e) => setSelectedPlayerId(e.target.value)}
                       className="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-slate-200 focus:outline-none focus:border-indigo-500 text-sm"
                     >
-                      <option value="">-- Select Player --</option>
+                      <option value="">-- Select Student --</option>
                       {players.map((p) => (
                         <option key={p.id} value={p.id}>
-                          {p.full_name || p.email} ({p.points || 0} pts)
+                          {p.full_name || p.email} ({p.class_name || 'N/A'}) - {p.points || 0} pts
                         </option>
                       ))}
                     </select>
@@ -342,14 +345,15 @@ export default function AdminPage() {
 
             <div className="lg:col-span-2 bg-slate-900 border border-slate-800 rounded-xl p-6 shadow-xl">
               <h2 className="text-xl font-bold text-white mb-4">
-                {pointTarget === 'team' ? 'Live Team Standings' : 'Live Player Standings'}
+                {pointTarget === 'team' ? 'Live Team Standings' : 'Live Individual Player Standings'}
               </h2>
               <div className="overflow-x-auto">
                 <table className="w-full text-left border-collapse">
                   <thead>
                     <tr className="border-b border-slate-800 text-slate-400 text-xs font-semibold uppercase">
                       <th className="py-3 px-4">Rank</th>
-                      <th className="py-3 px-4">{pointTarget === 'team' ? 'Team Name' : 'Player Name'}</th>
+                      <th className="py-3 px-4">{pointTarget === 'team' ? 'Team Name' : 'Student Name'}</th>
+                      <th className="py-3 px-4">{pointTarget === 'team' ? 'Sport' : 'Class / Grade'}</th>
                       <th className="py-3 px-4 text-right">Points</th>
                     </tr>
                   </thead>
@@ -358,8 +362,9 @@ export default function AdminPage() {
                       teams.map((team, idx) => (
                         <tr key={team.id} className="hover:bg-slate-800/50 transition">
                           <td className="py-3 px-4 font-mono text-slate-400">#{idx + 1}</td>
-                          <td className="py-3 px-4 font-medium text-white">{team.name}</td>
-                          <td className="py-3 px-4 text-right font-bold text-emerald-400">{team.points || 0}</td>
+                          <td className="py-3 px-4 font-medium text-white">{team.team_name || team.name}</td>
+                          <td className="py-3 px-4 text-slate-400 text-xs">{team.sport || 'General'}</td>
+                          <td className="py-3 px-4 text-right font-bold text-emerald-400">{team.points || 0} pts</td>
                         </tr>
                       ))
                     ) : (
@@ -367,7 +372,8 @@ export default function AdminPage() {
                         <tr key={player.id} className="hover:bg-slate-800/50 transition">
                           <td className="py-3 px-4 font-mono text-slate-400">#{idx + 1}</td>
                           <td className="py-3 px-4 font-medium text-white">{player.full_name || player.email}</td>
-                          <td className="py-3 px-4 text-right font-bold text-emerald-400">{player.points || 0}</td>
+                          <td className="py-3 px-4 text-slate-400 text-xs">{player.class_name} ({player.grade})</td>
+                          <td className="py-3 px-4 text-right font-bold text-emerald-400">{player.points || 0} pts</td>
                         </tr>
                       ))
                     )}
@@ -382,14 +388,15 @@ export default function AdminPage() {
         {activeTab === 'competitions' && (
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
             <div className="bg-slate-900 border border-slate-800 rounded-xl p-6 shadow-xl h-fit">
-              <h2 className="text-xl font-bold text-white mb-4">🏆 New Competition</h2>
+              <h2 className="text-xl font-bold text-white mb-4">🏆 Create Competition</h2>
               <form onSubmit={handleCreateCompetition} className="space-y-4">
                 <div>
                   <label className="block text-xs font-semibold text-slate-400 uppercase tracking-wider mb-2">
-                    Title
+                    Title / Name
                   </label>
                   <input
                     type="text"
+                    required
                     placeholder="e.g. STEM Football Championship"
                     value={compName}
                     onChange={(e) => setCompName(e.target.value)}
@@ -401,27 +408,44 @@ export default function AdminPage() {
                   <label className="block text-xs font-semibold text-slate-400 uppercase tracking-wider mb-2">
                     Sport Category
                   </label>
-                  <input
-                    type="text"
-                    placeholder="e.g. Football, Chess, Basketball"
+                  <select
                     value={compSport}
                     onChange={(e) => setCompSport(e.target.value)}
                     className="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-slate-200 focus:outline-none focus:border-indigo-500 text-sm"
-                  />
+                  >
+                    <option value="Football">Football</option>
+                    <option value="Volleyball">Volleyball</option>
+                    <option value="Basketball">Basketball</option>
+                    <option value="Table Tennis">Table Tennis</option>
+                    <option value="Chess">Chess</option>
+                  </select>
                 </div>
 
                 <div>
                   <label className="block text-xs font-semibold text-slate-400 uppercase tracking-wider mb-2">
-                    Event Type
+                    Tournament Format (Team vs Solo)
                   </label>
                   <select
                     value={compType}
                     onChange={(e) => setCompType(e.target.value)}
                     className="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-slate-200 focus:outline-none focus:border-indigo-500 text-sm"
                   >
-                    <option value="team">👥 Team Event</option>
-                    <option value="solo">👤 Solo Event</option>
+                    <option value="team">🛡️ Team Event</option>
+                    <option value="individual">👤 Solo / Individual Event</option>
                   </select>
+                </div>
+
+                <div>
+                  <label className="block text-xs font-semibold text-slate-400 uppercase tracking-wider mb-2">
+                    Description
+                  </label>
+                  <textarea
+                    rows={3}
+                    placeholder="e.g. Official knock-out stage tournament for all classes."
+                    value={compDescription}
+                    onChange={(e) => setCompDescription(e.target.value)}
+                    className="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-slate-200 focus:outline-none focus:border-indigo-500 text-sm"
+                  />
                 </div>
 
                 <div>
@@ -460,7 +484,7 @@ export default function AdminPage() {
                   <table className="w-full text-left border-collapse">
                     <thead>
                       <tr className="border-b border-slate-800 text-slate-400 text-xs font-semibold uppercase">
-                        <th className="py-3 px-4">Title</th>
+                        <th className="py-3 px-4">Title & Description</th>
                         <th className="py-3 px-4">Sport</th>
                         <th className="py-3 px-4">Type</th>
                         <th className="py-3 px-4">Date</th>
@@ -470,22 +494,27 @@ export default function AdminPage() {
                     <tbody className="divide-y divide-slate-800 text-sm">
                       {competitions.map((comp) => (
                         <tr key={comp.id} className="hover:bg-slate-800/50 transition">
-                          <td className="py-3 px-4 font-medium text-white">{comp.title}</td>
-                          <td className="py-3 px-4 text-slate-400">{comp.sport}</td>
+                          <td className="py-3 px-4">
+                            <span className="font-bold text-white block">{comp.title}</span>
+                            {comp.description && (
+                              <span className="text-xs text-slate-400 block mt-0.5">{comp.description}</span>
+                            )}
+                          </td>
+                          <td className="py-3 px-4 text-slate-300 text-xs">{comp.sport}</td>
                           <td className="py-3 px-4">
                             <span className={`inline-block px-2 py-0.5 text-xs font-semibold rounded ${
-                              comp.type === 'solo' ? 'bg-amber-500/10 text-amber-400' : 'bg-indigo-500/10 text-indigo-400'
+                              comp.type === 'individual' ? 'bg-cyan-500/20 text-cyan-300' : 'bg-purple-500/20 text-purple-300'
                             }`}>
-                              {comp.type === 'solo' ? 'Solo' : 'Team'}
+                              {comp.type === 'individual' ? '👤 Solo' : '🛡️ Team'}
                             </span>
                           </td>
-                          <td className="py-3 px-4 text-slate-400">{comp.date || 'TBD'}</td>
+                          <td className="py-3 px-4 text-slate-400 text-xs">{comp.date || 'TBD'}</td>
                           <td className="py-3 px-4 text-right">
                             <button
                               onClick={() => handleDeleteCompetition(comp.id, comp.title)}
                               className="px-2.5 py-1 bg-rose-600/20 hover:bg-rose-600 text-rose-400 hover:text-white text-xs font-semibold rounded transition"
                             >
-                              Delete
+                              Delete 🗑️
                             </button>
                           </td>
                         </tr>
