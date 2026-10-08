@@ -21,12 +21,17 @@ export default function AdminPage() {
   const [donations, setDonations] = useState([]);
 
   // Point Management Form State
-  const [pointMode, setPointMode] = useState('comp_student'); // 'comp_student' | 'student_total' | 'team'
+  const [pointContext, setPointContext] = useState('competition'); // 'competition' | 'overall'
+  const [pointTarget, setPointTarget] = useState('student'); // 'student' | 'team'
+  
   const [selectedCompId, setSelectedCompId] = useState('');
   const [selectedPlayerId, setSelectedPlayerId] = useState('');
   const [selectedTeamId, setSelectedTeamId] = useState('');
   const [pointsToAdd, setPointsToAdd] = useState('');
   const [pointActionMsg, setPointActionMsg] = useState('');
+
+  // Leaderboard View State
+  const [leaderboardView, setLeaderboardView] = useState('competition'); // 'competition' | 'overall_students' | 'overall_teams'
 
   // Competition Form State
   const [compName, setCompName] = useState('');
@@ -84,7 +89,12 @@ export default function AdminPage() {
     if (playersData) setPlayers(playersData);
 
     const { data: compData } = await supabase.from('competitions').select('*').order('created_at', { ascending: false });
-    if (compData) setCompetitions(compData);
+    if (compData) {
+      setCompetitions(compData);
+      if (compData.length > 0 && !selectedCompId) {
+        setSelectedCompId(compData[0].id);
+      }
+    }
 
     const { data: scoreData } = await supabase.from('competition_scores').select('*');
     if (scoreData) setCompetitionScores(scoreData);
@@ -92,6 +102,24 @@ export default function AdminPage() {
     const { data: donationData } = await supabase.from('donations').select('*').order('created_at', { ascending: false });
     if (donationData) setDonations(donationData);
   }
+
+  // Calculate current competition points for selected student or team
+  const getCurrentCompPoints = () => {
+    if (!selectedCompId) return 0;
+    if (pointTarget === 'student' && selectedPlayerId) {
+      const match = competitionScores.find(
+        (s) => s.competition_id === selectedCompId && s.student_id === selectedPlayerId
+      );
+      return match ? match.points || 0 : 0;
+    }
+    if (pointTarget === 'team' && selectedTeamId) {
+      const match = competitionScores.find(
+        (s) => s.competition_id === selectedCompId && s.team_id === selectedTeamId
+      );
+      return match ? match.points || 0 : 0;
+    }
+    return 0;
+  };
 
   // Handle Point Updates
   async function handleAddPoints(e) {
@@ -105,103 +133,172 @@ export default function AdminPage() {
 
     const delta = parseInt(pointsToAdd, 10);
 
-    if (pointMode === 'comp_student') {
-      if (!selectedCompId || !selectedPlayerId) {
-        setPointActionMsg('Please select both a competition and a student.');
+    if (pointContext === 'competition') {
+      if (!selectedCompId) {
+        setPointActionMsg('Please select a competition.');
         return;
       }
 
-      // Check existing competition score
-      const existingScoreObj = competitionScores.find(
-        (s) => s.competition_id === selectedCompId && s.student_id === selectedPlayerId
-      );
-      const currentCompPoints = existingScoreObj ? existingScoreObj.points : 0;
-      const newCompPoints = currentCompPoints + delta;
+      if (pointTarget === 'student') {
+        if (!selectedPlayerId) {
+          setPointActionMsg('Please select a student.');
+          return;
+        }
 
-      // 1. Upsert competition score
-      const { error: compScoreError } = await supabase
-        .from('competition_scores')
-        .upsert([{ 
-          competition_id: selectedCompId, 
-          student_id: selectedPlayerId, 
-          points: newCompPoints 
-        }], { onConflict: 'competition_id,student_id' });
+        const currentCompPts = getCurrentCompPoints();
+        const newCompPts = currentCompPts + delta;
 
-      if (compScoreError) {
-        setPointActionMsg(`Error updating competition score: ${compScoreError.message}`);
-        return;
-      }
+        // 1. Update/Upsert competition score for student
+        const { error: compErr } = await supabase
+          .from('competition_scores')
+          .upsert([{ 
+            competition_id: selectedCompId, 
+            student_id: selectedPlayerId, 
+            points: newCompPts 
+          }], { onConflict: 'competition_id,student_id' });
 
-      // 2. Also increase overall total points for student
-      const player = players.find((p) => p.id === selectedPlayerId);
-      const newTotalPoints = (player?.points || 0) + delta;
+        if (compErr) {
+          setPointActionMsg(`Error updating competition score: ${compErr.message}`);
+          return;
+        }
 
-      const { error: playerTotalError } = await supabase
-        .from('profiles')
-        .update({ points: newTotalPoints })
-        .eq('id', selectedPlayerId);
+        // 2. Also update student total points
+        const player = players.find((p) => p.id === selectedPlayerId);
+        const newTotal = (player?.points || 0) + delta;
 
-      if (playerTotalError) {
-        setPointActionMsg(`Updated competition score, but failed profile total: ${playerTotalError.message}`);
+        const { error: totalErr } = await supabase
+          .from('profiles')
+          .update({ points: newTotal })
+          .eq('id', selectedPlayerId);
+
+        if (totalErr) {
+          setPointActionMsg(`Updated competition score, but failed total: ${totalErr.message}`);
+        } else {
+          setPointActionMsg(`Success! Competition points updated to ${newCompPts} and total points to ${newTotal}.`);
+          setPointsToAdd('');
+          fetchAdminData();
+        }
+
       } else {
-        setPointActionMsg(`Success! Updated competition points to ${newCompPoints} and total points to ${newTotalPoints}.`);
-        setPointsToAdd('');
-        fetchAdminData();
+        // Team in Competition
+        if (!selectedTeamId) {
+          setPointActionMsg('Please select a team.');
+          return;
+        }
+
+        const currentCompPts = getCurrentCompPoints();
+        const newCompPts = currentCompPts + delta;
+
+        // 1. Update/Upsert competition score for team
+        const { error: compErr } = await supabase
+          .from('competition_scores')
+          .upsert([{ 
+            competition_id: selectedCompId, 
+            team_id: selectedTeamId, 
+            points: newCompPts 
+          }], { onConflict: 'competition_id,team_id' });
+
+        if (compErr) {
+          setPointActionMsg(`Error updating competition score: ${compErr.message}`);
+          return;
+        }
+
+        // 2. Also update team total points
+        const team = teams.find((t) => t.id === selectedTeamId);
+        const newTotal = (team?.points || 0) + delta;
+
+        const { error: totalErr } = await supabase
+          .from('teams')
+          .update({ points: newTotal })
+          .eq('id', selectedTeamId);
+
+        if (totalErr) {
+          setPointActionMsg(`Updated competition score, but failed team total: ${totalErr.message}`);
+        } else {
+          setPointActionMsg(`Success! Team competition points updated to ${newCompPts} and total points to ${newTotal}.`);
+          setPointsToAdd('');
+          fetchAdminData();
+        }
       }
 
-    } else if (pointMode === 'student_total') {
-      if (!selectedPlayerId) {
-        setPointActionMsg('Please select a student.');
-        return;
-      }
-      const player = players.find((p) => p.id === selectedPlayerId);
-      const newTotal = (player?.points || 0) + delta;
-
-      const { error } = await supabase.from('profiles').update({ points: newTotal }).eq('id', selectedPlayerId);
-
-      if (error) setPointActionMsg(`Error: ${error.message}`);
-      else {
-        setPointActionMsg(`Success! Updated student total points to ${newTotal}.`);
-        setPointsToAdd('');
-        fetchAdminData();
-      }
-
-    } else if (pointMode === 'team') {
-      if (!selectedTeamId) {
-        setPointActionMsg('Please select a team.');
-        return;
-      }
-      const team = teams.find((t) => t.id === selectedTeamId);
-      const newTotal = (team?.points || 0) + delta;
-
-      const { error } = await supabase.from('teams').update({ points: newTotal }).eq('id', selectedTeamId);
-
-      if (error) setPointActionMsg(`Error: ${error.message}`);
-      else {
-        setPointActionMsg(`Success! Updated team score to ${newTotal}.`);
-        setPointsToAdd('');
-        fetchAdminData();
-      }
-    }
-  }
-
-  // Clear All Student Points
-  async function handleClearAllStudentPoints() {
-    if (!confirm("⚠️ WARNING: This will reset ALL student total points and competition scores to 0. Continue?")) return;
-
-    // Reset total points in profiles
-    const { error: profileErr } = await supabase.from('profiles').update({ points: 0 }).neq('id', '00000000-0000-0000-0000-000000000000');
-    
-    // Reset competition scores
-    const { error: compScoreErr } = await supabase.from('competition_scores').update({ points: 0 }).neq('id', '00000000-0000-0000-0000-000000000000');
-
-    if (profileErr || compScoreErr) {
-      alert(`Error resetting points: ${profileErr?.message || compScoreErr?.message}`);
     } else {
-      alert("✅ All student points have been reset to 0!");
-      fetchAdminData();
+      // Overall Total Points
+      if (pointTarget === 'student') {
+        if (!selectedPlayerId) {
+          setPointActionMsg('Please select a student.');
+          return;
+        }
+        const player = players.find((p) => p.id === selectedPlayerId);
+        const newTotal = (player?.points || 0) + delta;
+
+        const { error } = await supabase.from('profiles').update({ points: newTotal }).eq('id', selectedPlayerId);
+        if (error) setPointActionMsg(`Error: ${error.message}`);
+        else {
+          setPointActionMsg(`Success! Updated student total points to ${newTotal}.`);
+          setPointsToAdd('');
+          fetchAdminData();
+        }
+      } else {
+        if (!selectedTeamId) {
+          setPointActionMsg('Please select a team.');
+          return;
+        }
+        const team = teams.find((t) => t.id === selectedTeamId);
+        const newTotal = (team?.points || 0) + delta;
+
+        const { error } = await supabase.from('teams').update({ points: newTotal }).eq('id', selectedTeamId);
+        if (error) setPointActionMsg(`Error: ${error.message}`);
+        else {
+          setPointActionMsg(`Success! Updated team total points to ${newTotal}.`);
+          setPointsToAdd('');
+          fetchAdminData();
+        }
+      }
     }
   }
+
+  // Clear All Points
+  async function handleClearAllPoints() {
+    if (!confirm("⚠️ WARNING: This will reset ALL student total points, team total points, and competition scores to 0. Continue?")) return;
+
+    await supabase.from('profiles').update({ points: 0 }).neq('id', '00000000-0000-0000-0000-000000000000');
+    await supabase.from('teams').update({ points: 0 }).neq('id', '00000000-0000-0000-0000-000000000000');
+    await supabase.from('competition_scores').update({ points: 0 }).neq('id', '00000000-0000-0000-0000-000000000000');
+
+    alert("✅ All points (Students, Teams, & Competitions) have been reset to 0!");
+    fetchAdminData();
+  }
+
+  // Get Scores for current selected competition for the Leaderboard view
+  const getSelectedCompLeaderboard = () => {
+    if (!selectedCompId) return [];
+    
+    const scores = competitionScores.filter((s) => s.competition_id === selectedCompId);
+
+    if (pointTarget === 'student') {
+      return players.map((player) => {
+        const scoreObj = scores.find((s) => s.student_id === player.id);
+        return {
+          id: player.id,
+          name: player.full_name || player.email,
+          subtitle: player.class_name || 'Student',
+          compPoints: scoreObj ? scoreObj.points || 0 : 0,
+          totalPoints: player.points || 0
+        };
+      }).sort((a, b) => b.compPoints - a.compPoints);
+    } else {
+      return teams.map((team) => {
+        const scoreObj = scores.find((s) => s.team_id === team.id);
+        return {
+          id: team.id,
+          name: team.team_name || team.name,
+          subtitle: team.sport || 'Team',
+          compPoints: scoreObj ? scoreObj.points || 0 : 0,
+          totalPoints: team.points || 0
+        };
+      }).sort((a, b) => b.compPoints - a.compPoints);
+    }
+  };
 
   // Create Competition
   async function handleCreateCompetition(e) {
@@ -284,13 +381,15 @@ export default function AdminPage() {
     );
   }
 
+  const selectedComp = competitions.find(c => c.id === selectedCompId);
+
   return (
     <div className="min-h-screen bg-slate-950 text-slate-100 p-6 md:p-12">
       {/* Header Bar */}
       <div className="max-w-6xl mx-auto flex flex-col md:flex-row justify-between items-start md:items-center mb-8 pb-6 border-b border-slate-800 gap-4">
         <div>
           <h1 className="text-3xl font-extrabold text-white tracking-tight">👑 Admin Control Center</h1>
-          <p className="text-slate-400 text-sm mt-1">Manage points, student competition scores, events, and donations.</p>
+          <p className="text-slate-400 text-sm mt-1">Manage points, competition scores, teams, and donations.</p>
         </div>
         <a
           href="/"
@@ -340,104 +439,115 @@ export default function AdminPage() {
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
             <div className="bg-slate-900 border border-slate-800 rounded-xl p-6 shadow-xl h-fit space-y-6">
               <div>
-                <h2 className="text-xl font-bold text-white mb-2">➕ Award Points</h2>
+                <h2 className="text-xl font-bold text-white mb-3">➕ Award / Update Points</h2>
                 
-                {/* Point Mode Switcher */}
-                <div className="grid grid-cols-3 gap-1 mb-4 bg-slate-950 p-1 rounded-lg border border-slate-800 text-[11px] font-semibold">
-                  <button
-                    type="button"
-                    onClick={() => setPointMode('comp_student')}
-                    className={`py-2 rounded transition ${
-                      pointMode === 'comp_student' ? 'bg-indigo-600 text-white' : 'text-slate-400 hover:text-white'
-                    }`}
-                  >
-                    In Event
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setPointMode('student_total')}
-                    className={`py-2 rounded transition ${
-                      pointMode === 'student_total' ? 'bg-indigo-600 text-white' : 'text-slate-400 hover:text-white'
-                    }`}
-                  >
-                    Student Total
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setPointMode('team')}
-                    className={`py-2 rounded transition ${
-                      pointMode === 'team' ? 'bg-indigo-600 text-white' : 'text-slate-400 hover:text-white'
-                    }`}
-                  >
-                    Team Total
-                  </button>
+                {/* Context Switcher: Competition vs Overall */}
+                <div className="mb-3">
+                  <label className="block text-xs font-semibold text-slate-400 uppercase mb-1">Point Context</label>
+                  <div className="grid grid-cols-2 gap-1 bg-slate-950 p-1 rounded-lg border border-slate-800 text-xs font-semibold">
+                    <button
+                      type="button"
+                      onClick={() => { setPointContext('competition'); setLeaderboardView('competition'); }}
+                      className={`py-1.5 rounded transition ${
+                        pointContext === 'competition' ? 'bg-indigo-600 text-white' : 'text-slate-400 hover:text-white'
+                      }`}
+                    >
+                      🏆 In Competition
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setPointContext('overall')}
+                      className={`py-1.5 rounded transition ${
+                        pointContext === 'overall' ? 'bg-indigo-600 text-white' : 'text-slate-400 hover:text-white'
+                      }`}
+                    >
+                      ⭐ Overall Total
+                    </button>
+                  </div>
+                </div>
+
+                {/* Target Switcher: Student vs Team */}
+                <div className="mb-4">
+                  <label className="block text-xs font-semibold text-slate-400 uppercase mb-1">Target Type</label>
+                  <div className="grid grid-cols-2 gap-1 bg-slate-950 p-1 rounded-lg border border-slate-800 text-xs font-semibold">
+                    <button
+                      type="button"
+                      onClick={() => setPointTarget('student')}
+                      className={`py-1.5 rounded transition ${
+                        pointTarget === 'student' ? 'bg-indigo-600 text-white' : 'text-slate-400 hover:text-white'
+                      }`}
+                    >
+                      👤 Student
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setPointTarget('team')}
+                      className={`py-1.5 rounded transition ${
+                        pointTarget === 'team' ? 'bg-indigo-600 text-white' : 'text-slate-400 hover:text-white'
+                      }`}
+                    >
+                      🛡️ Team
+                    </button>
+                  </div>
                 </div>
 
                 <form onSubmit={handleAddPoints} className="space-y-4">
-                  {/* Competition Student Option */}
-                  {pointMode === 'comp_student' && (
-                    <>
-                      <div>
-                        <label className="block text-xs font-semibold text-slate-400 uppercase mb-1">Select Competition</label>
-                        <select
-                          value={selectedCompId}
-                          onChange={(e) => setSelectedCompId(e.target.value)}
-                          className="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-slate-200 text-sm"
-                        >
-                          <option value="">-- Choose Competition --</option>
-                          {competitions.map((c) => (
-                            <option key={c.id} value={c.id}>{c.title} ({c.sport})</option>
-                          ))}
-                        </select>
-                      </div>
-
-                      <div>
-                        <label className="block text-xs font-semibold text-slate-400 uppercase mb-1">Select Student</label>
-                        <select
-                          value={selectedPlayerId}
-                          onChange={(e) => setSelectedPlayerId(e.target.value)}
-                          className="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-slate-200 text-sm"
-                        >
-                          <option value="">-- Choose Student --</option>
-                          {players.map((p) => (
-                            <option key={p.id} value={p.id}>{p.full_name || p.email} (Total: {p.points || 0} pts)</option>
-                          ))}
-                        </select>
-                      </div>
-                    </>
-                  )}
-
-                  {/* Student Total Option */}
-                  {pointMode === 'student_total' && (
+                  {/* Competition Select */}
+                  {pointContext === 'competition' && (
                     <div>
-                      <label className="block text-xs font-semibold text-slate-400 uppercase mb-1">Select Student</label>
+                      <label className="block text-xs font-semibold text-slate-400 uppercase mb-1">Select Competition</label>
                       <select
-                        value={selectedPlayerId}
-                        onChange={(e) => setSelectedPlayerId(e.target.value)}
-                        className="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-slate-200 text-sm"
+                        value={selectedCompId}
+                        onChange={(e) => setSelectedCompId(e.target.value)}
+                        className="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-slate-200 text-sm focus:outline-none focus:border-indigo-500"
                       >
-                        <option value="">-- Choose Student --</option>
-                        {players.map((p) => (
-                          <option key={p.id} value={p.id}>{p.full_name || p.email} ({p.points || 0} pts)</option>
+                        <option value="">-- Choose Competition --</option>
+                        {competitions.map((c) => (
+                          <option key={c.id} value={c.id}>{c.title} ({c.sport})</option>
                         ))}
                       </select>
                     </div>
                   )}
 
-                  {/* Team Option */}
-                  {pointMode === 'team' && (
+                  {/* Student Select */}
+                  {pointTarget === 'student' && (
+                    <div>
+                      <label className="block text-xs font-semibold text-slate-400 uppercase mb-1">Select Student</label>
+                      <select
+                        value={selectedPlayerId}
+                        onChange={(e) => setSelectedPlayerId(e.target.value)}
+                        className="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-slate-200 text-sm focus:outline-none focus:border-indigo-500"
+                      >
+                        <option value="">-- Choose Student --</option>
+                        {players.map((p) => (
+                          <option key={p.id} value={p.id}>{p.full_name || p.email} (Overall: {p.points || 0} pts)</option>
+                        ))}
+                      </select>
+                    </div>
+                  )}
+
+                  {/* Team Select */}
+                  {pointTarget === 'team' && (
                     <div>
                       <label className="block text-xs font-semibold text-slate-400 uppercase mb-1">Select Team</label>
                       <select
                         value={selectedTeamId}
                         onChange={(e) => setSelectedTeamId(e.target.value)}
-                        className="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-slate-200 text-sm"
+                        className="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-slate-200 text-sm focus:outline-none focus:border-indigo-500"
                       >
                         <option value="">-- Choose Team --</option>
                         {teams.map((t) => (
-                          <option key={t.id} value={t.id}>{t.team_name || t.name} ({t.points || 0} pts)</option>
+                          <option key={t.id} value={t.id}>{t.team_name || t.name} (Overall: {t.points || 0} pts)</option>
                         ))}
                       </select>
+                    </div>
+                  )}
+
+                  {/* Show Current Competition Points Badge if selected */}
+                  {pointContext === 'competition' && selectedCompId && (selectedPlayerId || selectedTeamId) && (
+                    <div className="bg-slate-950 p-3 rounded-lg border border-slate-800 flex justify-between items-center text-xs">
+                      <span className="text-slate-400 font-medium">Current Points in Event:</span>
+                      <span className="font-bold text-amber-400 text-sm">{getCurrentCompPoints()} pts</span>
                     </div>
                   )}
 
@@ -445,18 +555,18 @@ export default function AdminPage() {
                     <label className="block text-xs font-semibold text-slate-400 uppercase mb-1">Points Difference (+ / -)</label>
                     <input
                       type="number"
-                      placeholder="e.g. 20 or -5"
+                      placeholder="e.g. 25 or -10"
                       value={pointsToAdd}
                       onChange={(e) => setPointsToAdd(e.target.value)}
-                      className="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-slate-200 text-sm"
+                      className="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-slate-200 text-sm focus:outline-none focus:border-indigo-500"
                     />
                   </div>
 
                   <button
                     type="submit"
-                    className="w-full py-2.5 bg-emerald-600 hover:bg-emerald-500 text-white font-semibold rounded-lg text-sm transition"
+                    className="w-full py-2.5 bg-emerald-600 hover:bg-emerald-500 text-white font-semibold rounded-lg text-sm transition shadow-md"
                   >
-                    Update Points
+                    Update Score
                   </button>
 
                   {pointActionMsg && (
@@ -467,43 +577,138 @@ export default function AdminPage() {
                 </form>
               </div>
 
-              {/* Reset All Points Section */}
+              {/* Clear All Points */}
               <div className="pt-4 border-t border-slate-800">
                 <h3 className="text-sm font-bold text-rose-400 mb-2">🚨 Reset Controls</h3>
                 <button
                   type="button"
-                  onClick={handleClearAllStudentPoints}
-                  className="w-full py-2 bg-rose-900/40 hover:bg-rose-600 border border-rose-700/50 text-rose-200 hover:text-white font-semibold text-xs rounded-lg transition"
+                  onClick={handleClearAllPoints}
+                  className="w-full py-2 bg-rose-900/30 hover:bg-rose-600 border border-rose-700/50 text-rose-200 hover:text-white font-semibold text-xs rounded-lg transition"
                 >
-                  Clear All Student Points
+                  Clear All Points (Students & Teams)
                 </button>
               </div>
             </div>
 
+            {/* Right Panel: Standings / Leaderboard */}
             <div className="lg:col-span-2 bg-slate-900 border border-slate-800 rounded-xl p-6 shadow-xl">
-              <h2 className="text-xl font-bold text-white mb-4">Student Leaderboard (Overall)</h2>
-              <div className="overflow-x-auto">
-                <table className="w-full text-left border-collapse">
-                  <thead>
-                    <tr className="border-b border-slate-800 text-slate-400 text-xs font-semibold uppercase">
-                      <th className="py-3 px-4">Rank</th>
-                      <th className="py-3 px-4">Student Name</th>
-                      <th className="py-3 px-4">Class</th>
-                      <th className="py-3 px-4 text-right">Total Points</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-slate-800 text-sm">
-                    {players.map((p, idx) => (
-                      <tr key={p.id} className="hover:bg-slate-800/50 transition">
-                        <td className="py-3 px-4 font-mono text-slate-400">#{idx + 1}</td>
-                        <td className="py-3 px-4 font-medium text-white">{p.full_name || p.email}</td>
-                        <td className="py-3 px-4 text-slate-400 text-xs">{p.class_name || 'N/A'}</td>
-                        <td className="py-3 px-4 text-right font-bold text-emerald-400">{p.points || 0} pts</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
+              <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-6 gap-3 border-b border-slate-800 pb-4">
+                <div>
+                  <h2 className="text-xl font-bold text-white">
+                    {leaderboardView === 'competition' 
+                      ? `Competition Standings: ${selectedComp?.title || 'Selected Event'}`
+                      : leaderboardView === 'overall_students' 
+                        ? 'Overall Student Standings' 
+                        : 'Overall Team Standings'}
+                  </h2>
+                  <p className="text-xs text-slate-400 mt-0.5">Real-time point records and rankings.</p>
+                </div>
+
+                <div className="flex gap-1 bg-slate-950 p-1 rounded-lg border border-slate-800 text-xs font-semibold">
+                  <button
+                    onClick={() => setLeaderboardView('competition')}
+                    className={`px-3 py-1.5 rounded transition ${leaderboardView === 'competition' ? 'bg-indigo-600 text-white' : 'text-slate-400 hover:text-white'}`}
+                  >
+                    Event Points
+                  </button>
+                  <button
+                    onClick={() => setLeaderboardView('overall_students')}
+                    className={`px-3 py-1.5 rounded transition ${leaderboardView === 'overall_students' ? 'bg-indigo-600 text-white' : 'text-slate-400 hover:text-white'}`}
+                  >
+                    All Students
+                  </button>
+                  <button
+                    onClick={() => setLeaderboardView('overall_teams')}
+                    className={`px-3 py-1.5 rounded transition ${leaderboardView === 'overall_teams' ? 'bg-indigo-600 text-white' : 'text-slate-400 hover:text-white'}`}
+                  >
+                    All Teams
+                  </button>
+                </div>
               </div>
+
+              {/* View 1: Event Competition Points Table */}
+              {leaderboardView === 'competition' && (
+                <div className="overflow-x-auto">
+                  {!selectedCompId ? (
+                    <p className="text-slate-500 text-sm py-4">Please select a competition in the form on the left.</p>
+                  ) : (
+                    <table className="w-full text-left border-collapse">
+                      <thead>
+                        <tr className="border-b border-slate-800 text-slate-400 text-xs font-semibold uppercase">
+                          <th className="py-3 px-4">Rank</th>
+                          <th className="py-3 px-4">{pointTarget === 'student' ? 'Student' : 'Team'}</th>
+                          <th className="py-3 px-4">Details</th>
+                          <th className="py-3 px-4 text-right">Event Points</th>
+                          <th className="py-3 px-4 text-right">Overall Total</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-slate-800 text-sm">
+                        {getSelectedCompLeaderboard().map((row, idx) => (
+                          <tr key={row.id} className="hover:bg-slate-800/50 transition">
+                            <td className="py-3 px-4 font-mono text-slate-400">#{idx + 1}</td>
+                            <td className="py-3 px-4 font-medium text-white">{row.name}</td>
+                            <td className="py-3 px-4 text-slate-400 text-xs">{row.subtitle}</td>
+                            <td className="py-3 px-4 text-right font-bold text-amber-400">{row.compPoints} pts</td>
+                            <td className="py-3 px-4 text-right font-semibold text-emerald-400">{row.totalPoints} pts</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  )}
+                </div>
+              )}
+
+              {/* View 2: Overall Students Table */}
+              {leaderboardView === 'overall_students' && (
+                <div className="overflow-x-auto">
+                  <table className="w-full text-left border-collapse">
+                    <thead>
+                      <tr className="border-b border-slate-800 text-slate-400 text-xs font-semibold uppercase">
+                        <th className="py-3 px-4">Rank</th>
+                        <th className="py-3 px-4">Student Name</th>
+                        <th className="py-3 px-4">Class</th>
+                        <th className="py-3 px-4 text-right">Total Points</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-800 text-sm">
+                      {players.map((p, idx) => (
+                        <tr key={p.id} className="hover:bg-slate-800/50 transition">
+                          <td className="py-3 px-4 font-mono text-slate-400">#{idx + 1}</td>
+                          <td className="py-3 px-4 font-medium text-white">{p.full_name || p.email}</td>
+                          <td className="py-3 px-4 text-slate-400 text-xs">{p.class_name || 'N/A'}</td>
+                          <td className="py-3 px-4 text-right font-bold text-emerald-400">{p.points || 0} pts</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+
+              {/* View 3: Overall Teams Table */}
+              {leaderboardView === 'overall_teams' && (
+                <div className="overflow-x-auto">
+                  <table className="w-full text-left border-collapse">
+                    <thead>
+                      <tr className="border-b border-slate-800 text-slate-400 text-xs font-semibold uppercase">
+                        <th className="py-3 px-4">Rank</th>
+                        <th className="py-3 px-4">Team Name</th>
+                        <th className="py-3 px-4">Sport</th>
+                        <th className="py-3 px-4 text-right">Total Points</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-800 text-sm">
+                      {teams.map((t, idx) => (
+                        <tr key={t.id} className="hover:bg-slate-800/50 transition">
+                          <td className="py-3 px-4 font-mono text-slate-400">#{idx + 1}</td>
+                          <td className="py-3 px-4 font-medium text-white">{t.team_name || t.name}</td>
+                          <td className="py-3 px-4 text-slate-400 text-xs">{t.sport || 'General'}</td>
+                          <td className="py-3 px-4 text-right font-bold text-emerald-400">{t.points || 0} pts</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
             </div>
           </div>
         )}
