@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { supabase } from '@/lib/supabaseClient'; // Adjust path if your Supabase client is elsewhere
+import { createClient } from '@supabase/supabase-js'; // Adjust path if your Supabase client is elsewhere
 
 export default function AdminPage() {
   const [loading, setLoading] = useState(true);
