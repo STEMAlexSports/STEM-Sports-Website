@@ -50,6 +50,7 @@ export default function Home() {
   // Auth Card Mode ('login' | 'register' | 'otp')
   const [authMode, setAuthMode] = useState('login');
   const [loadingAuth, setLoadingAuth] = useState(false);
+  const [resendCooldown, setResendCooldown] = useState(0);
 
   // Auth Input States
   const [fullName, setFullName] = useState('');
@@ -98,6 +99,17 @@ export default function Home() {
     }
     restoreSession();
   }, []);
+
+  // 60-second Resend Cooldown Countdown Timer
+  useEffect(() => {
+    let timer;
+    if (resendCooldown > 0) {
+      timer = setInterval(() => {
+        setResendCooldown((prev) => prev - 1);
+      }, 1000);
+    }
+    return () => clearInterval(timer);
+  }, [resendCooldown]);
 
   // Class selection rules
   useEffect(() => {
@@ -263,6 +275,7 @@ export default function Home() {
 
       if (!data.session) {
         setAuthMode('otp');
+        setResendCooldown(60); // Start 60-second timer
         alert(`Verification code sent to ${cleanEmail}! Please check your inbox and enter the 6-digit code below.`);
       } else {
         await saveProfileToDatabase(data.user?.id, cleanEmail);
@@ -274,7 +287,34 @@ export default function Home() {
     }
   }
 
-  // Step 2: Verify OTP Code and Create Profile
+  // Step 2: Resend OTP Code specifically for existing pending signup
+  async function handleResendCode() {
+    if (resendCooldown > 0) return;
+
+    const cleanEmail = email.trim().toLowerCase();
+    if (!cleanEmail) return alert('Please enter your email address first.');
+
+    setLoadingAuth(true);
+    try {
+      const { error } = await supabase.auth.resend({
+        type: 'signup',
+        email: cleanEmail,
+      });
+
+      if (error) {
+        alert('Resend error: ' + error.message);
+      } else {
+        alert(`A new verification code has been sent to ${cleanEmail}!`);
+        setResendCooldown(60); // Reset 60-second cooldown timer
+      }
+    } catch (err) {
+      alert('Error resending code: ' + err.message);
+    } finally {
+      setLoadingAuth(false);
+    }
+  }
+
+  // Step 3: Verify OTP Code and Create Profile
   async function handleVerifyOtp(e) {
     e.preventDefault();
     if (!otpCode.trim()) return alert('Please enter the verification code.');
@@ -1274,11 +1314,11 @@ export default function Home() {
                     </button>
                     <button
                       type="button"
-                      onClick={handleRegister}
-                      disabled={loadingAuth}
-                      className="hover:text-emerald-400 underline"
+                      onClick={handleResendCode}
+                      disabled={loadingAuth || resendCooldown > 0}
+                      className="hover:text-emerald-400 underline disabled:opacity-50 disabled:no-underline"
                     >
-                      Resend Code
+                      {resendCooldown > 0 ? `Resend Code in ${resendCooldown}s` : 'Resend Code'}
                     </button>
                   </div>
                 </form>
