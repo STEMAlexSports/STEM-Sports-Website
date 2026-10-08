@@ -63,7 +63,7 @@ export default function Home() {
   const [matchSport, setMatchSport] = useState('Football');
   const [matchDateTime, setMatchDateTime] = useState('');
 
-  // Restore Session
+  // Restore Session automatically
   useEffect(() => {
     async function restoreSession() {
       const savedEmail = localStorage.getItem('stem_student_email');
@@ -244,7 +244,6 @@ export default function Home() {
   async function handleJoinIndividualComp(compId) {
     if (!currentStudent) return alert('Please log in first.');
 
-    // Check if already joined
     const exists = compParticipants.some(
       (p) => p.competition_id === compId && p.student_id === currentStudent.id
     );
@@ -277,7 +276,7 @@ export default function Home() {
     }
   }
 
-  // Join Team Competition (Captain only)
+  // Join Team Competition
   async function handleJoinTeamComp(compId) {
     if (!currentStudent) return alert('Please log in first.');
     if (!teamToRegisterId) return alert('Please select a team to register.');
@@ -320,7 +319,7 @@ export default function Home() {
     }
   }
 
-  // Team CRUD
+  // Save/Edit Team
   async function handleSaveTeam(e) {
     e.preventDefault();
     if (!currentStudent) return alert('Please log in first.');
@@ -466,7 +465,7 @@ export default function Home() {
     }
   }
 
-  // Dynamic Themes
+  // Gender Themes
   const isFemale = currentStudent?.gender === 'Female';
   const themeClasses = isFemale
     ? {
@@ -495,10 +494,10 @@ export default function Home() {
   const selectedComp = competitions.find((c) => c.id === selectedCompId);
   const selectedCompParticipants = compParticipants.filter((p) => p.competition_id === selectedCompId);
 
-  // My Joined Competitions
-  const myJoinedCompIds = compParticipants
-    .filter((p) => p.student_id === currentStudent?.id || myTeamIds.includes(p.team_id))
-    .map((p) => p.competition_id);
+  // My Joined Competition Entries
+  const myJoinedCompEntries = compParticipants.filter(
+    (p) => p.student_id === currentStudent?.id || myTeamIds.includes(p.team_id)
+  );
 
   const classStandings = students.reduce((acc, student) => {
     const cls = student.class_name || 'Unassigned';
@@ -521,7 +520,7 @@ export default function Home() {
         </p>
       </header>
 
-      {/* Main Navigation Bar */}
+      {/* Navigation Bar */}
       <nav className="bg-slate-900/90 border border-slate-800 p-2 rounded-2xl flex flex-wrap justify-center gap-1.5 md:gap-2 shadow-xl sticky top-4 z-50 backdrop-blur-md text-xs md:text-sm">
         {[
           { id: 'dashboard', label: '📊 Dashboard' },
@@ -577,7 +576,7 @@ export default function Home() {
                 </div>
               </div>
 
-              {/* Incoming Challenges */}
+              {/* Incoming Challenge Alerts */}
               {incomingChallenges.length > 0 && (
                 <div className="mb-6 bg-amber-500/10 border border-amber-500/40 p-4 rounded-xl space-y-3">
                   <h3 className="font-bold text-amber-400 text-sm flex items-center gap-2">
@@ -614,41 +613,119 @@ export default function Home() {
                 </div>
               )}
 
-              <div className="grid md:grid-cols-3 gap-6 text-sm">
-                <div className="bg-slate-950/60 p-4 rounded-xl border border-slate-800 space-y-2">
-                  <h3 className="font-bold text-slate-300 border-b border-slate-800 pb-2">Personal Information</h3>
-                  <p><span className="text-slate-400">Email:</span> {currentStudent.email}</p>
-                  <p><span className="text-slate-400">Grade:</span> {currentStudent.grade}</p>
-                  <p><span className="text-slate-400">Class:</span> {currentStudent.class_name}</p>
-                  <p><span className="text-slate-400">Gender:</span> {currentStudent.gender}</p>
+              {/* 4-Card Grid on Dashboard: Personal Info, My Teams, My Competitions, My Donations */}
+              <div className="grid md:grid-cols-2 lg:grid-cols-4 gap-6 text-sm">
+                {/* Personal Info */}
+                <div className="bg-slate-950/60 p-4 rounded-xl border border-slate-800 space-y-2 flex flex-col justify-between">
+                  <div>
+                    <h3 className="font-bold text-slate-300 border-b border-slate-800 pb-2 mb-2">Personal Details</h3>
+                    <p className="text-xs"><span className="text-slate-400">Email:</span> {currentStudent.email}</p>
+                    <p className="text-xs"><span className="text-slate-400">Grade:</span> {currentStudent.grade}</p>
+                    <p className="text-xs"><span className="text-slate-400">Class:</span> {currentStudent.class_name}</p>
+                    <p className="text-xs"><span className="text-slate-400">Gender:</span> {currentStudent.gender}</p>
+                  </div>
+                  <span className="text-xxs text-amber-400 font-bold block pt-2">Registered Student</span>
                 </div>
 
-                <div className="bg-slate-950/60 p-4 rounded-xl border border-slate-800 space-y-2">
-                  <h3 className="font-bold text-slate-300 border-b border-slate-800 pb-2">My Registered Competitions</h3>
-                  <p className="text-xs text-slate-400">Active tournaments you/your team joined:</p>
-                  <span className="text-lg font-bold text-amber-400">{myJoinedCompIds.length} Joined</span>
+                {/* My Created Teams */}
+                <div className="bg-slate-950/60 p-4 rounded-xl border border-slate-800 space-y-2 flex flex-col justify-between">
+                  <div>
+                    <div className="flex justify-between items-center border-b border-slate-800 pb-2 mb-2">
+                      <h3 className="font-bold text-slate-300">My Teams ({myTeams.length})</h3>
+                      <button
+                        onClick={() => setActiveTab('teams')}
+                        className="text-xxs text-cyan-400 hover:underline"
+                      >
+                        + Manage
+                      </button>
+                    </div>
+
+                    {myTeams.length === 0 ? (
+                      <p className="text-xs text-slate-500">No teams created yet.</p>
+                    ) : (
+                      <ul className="space-y-1.5 max-h-32 overflow-y-auto pr-1">
+                        {myTeams.map((t) => (
+                          <li key={t.id} className="text-xs flex items-center justify-between bg-slate-900 p-1.5 rounded border border-slate-800">
+                            <span className="font-semibold text-white flex items-center gap-1">
+                              <TeamLogo logo={t.logo_url} sizeClass="w-4 h-4 text-xs" /> {t.team_name}
+                            </span>
+                            <span className="text-xxs text-slate-400">({t.sport})</span>
+                          </li>
+                        ))}
+                      </ul>
+                    )}
+                  </div>
                   <button
-                    onClick={() => setActiveTab('competitions')}
-                    className="mt-2 w-full bg-slate-800 hover:bg-slate-700 text-xs py-1.5 rounded text-cyan-300 font-bold"
+                    onClick={() => setActiveTab('teams')}
+                    className="w-full bg-slate-800 hover:bg-slate-700 text-xxs py-1.5 rounded text-cyan-300 font-bold transition"
                   >
-                    View All Competitions →
+                    Go to Team Building →
                   </button>
                 </div>
 
-                <div className="bg-slate-950/60 p-4 rounded-xl border border-slate-800 space-y-2">
-                  <h3 className="font-bold text-slate-300 border-b border-slate-800 pb-2">My Contributions</h3>
-                  {userDonations.length === 0 ? (
-                    <p className="text-xs text-slate-500">No equipment donations yet.</p>
-                  ) : (
-                    <ul className="space-y-1 text-xs max-h-28 overflow-y-auto">
-                      {userDonations.map((don) => (
-                        <li key={don.id} className="flex justify-between text-slate-300">
-                          <span>{don.fundraising?.item_name || 'Equipment'}</span>
-                          <span className="font-bold text-emerald-400">{don.amount} EGP</span>
-                        </li>
-                      ))}
-                    </ul>
-                  )}
+                {/* My Joined Competitions */}
+                <div className="bg-slate-950/60 p-4 rounded-xl border border-slate-800 space-y-2 flex flex-col justify-between">
+                  <div>
+                    <div className="flex justify-between items-center border-b border-slate-800 pb-2 mb-2">
+                      <h3 className="font-bold text-slate-300">Competitions ({myJoinedCompEntries.length})</h3>
+                      <button
+                        onClick={() => setActiveTab('competitions')}
+                        className="text-xxs text-yellow-400 hover:underline"
+                      >
+                        Browse
+                      </button>
+                    </div>
+
+                    {myJoinedCompEntries.length === 0 ? (
+                      <p className="text-xs text-slate-500">Not in any competition yet.</p>
+                    ) : (
+                      <ul className="space-y-1.5 max-h-32 overflow-y-auto pr-1">
+                        {myJoinedCompEntries.map((entry) => {
+                          const comp = competitions.find((c) => c.id === entry.competition_id);
+                          const teamObj = teams.find((t) => t.id === entry.team_id);
+                          return (
+                            <li key={entry.id} className="text-xs bg-slate-900 p-1.5 rounded border border-slate-800 space-y-0.5">
+                              <span className="font-semibold text-white block truncate">{comp?.title || 'Tournament'}</span>
+                              <span className="text-xxs text-amber-400 block">
+                                {entry.team_id ? `Team: ${teamObj?.team_name}` : 'Solo Registration'} ({entry.score} pts)
+                              </span>
+                            </li>
+                          );
+                        })}
+                      </ul>
+                    )}
+                  </div>
+                  <button
+                    onClick={() => setActiveTab('competitions')}
+                    className="w-full bg-slate-800 hover:bg-slate-700 text-xxs py-1.5 rounded text-yellow-300 font-bold transition"
+                  >
+                    View All Tournaments →
+                  </button>
+                </div>
+
+                {/* My Equipment Donations */}
+                <div className="bg-slate-950/60 p-4 rounded-xl border border-slate-800 space-y-2 flex flex-col justify-between">
+                  <div>
+                    <h3 className="font-bold text-slate-300 border-b border-slate-800 pb-2 mb-2">My Contributions</h3>
+                    {userDonations.length === 0 ? (
+                      <p className="text-xs text-slate-500">No equipment donations yet.</p>
+                    ) : (
+                      <ul className="space-y-1 text-xs max-h-32 overflow-y-auto">
+                        {userDonations.map((don) => (
+                          <li key={don.id} className="flex justify-between text-slate-300 bg-slate-900 p-1.5 rounded border border-slate-800">
+                            <span className="truncate pr-1">{don.fundraising?.item_name || 'Equipment'}</span>
+                            <span className="font-bold text-emerald-400">{don.amount} EGP</span>
+                          </li>
+                        ))}
+                      </ul>
+                    )}
+                  </div>
+                  <button
+                    onClick={() => setActiveTab('donations')}
+                    className="w-full bg-slate-800 hover:bg-slate-700 text-xxs py-1.5 rounded text-emerald-300 font-bold transition"
+                  >
+                    Donate Equipment →
+                  </button>
                 </div>
               </div>
             </section>
@@ -718,7 +795,7 @@ export default function Home() {
                   >
                     {(gender === 'Male'
                       ? [`${grade === 'G10' ? '1' : grade === 'G11' ? '2' : '3'}A`, `${grade === 'G10' ? '1' : grade === 'G11' ? '2' : '3'}B`, `${grade === 'G10' ? '1' : grade === 'G11' ? '2' : '3'}C`]
-                      : [`${grade === 'G10' ? '1' : grade === 'G10' ? '2' : '3'}D`, `${grade === 'G10' ? '1' : grade === 'G11' ? '2' : '3'}E`, `${grade === 'G10' ? '1' : grade === 'G11' ? '2' : '3'}F`]
+                      : [`${grade === 'G10' ? '1' : grade === 'G11' ? '2' : '3'}D`, `${grade === 'G10' ? '1' : grade === 'G11' ? '2' : '3'}E`, `${grade === 'G10' ? '1' : grade === 'G11' ? '2' : '3'}F`]
                     ).map((c) => (
                       <option key={c} value={c}>{c}</option>
                     ))}
@@ -1039,10 +1116,9 @@ export default function Home() {
         </div>
       )}
 
-      {/* 4. COMPETITIONS PAGE (WITH ROSTERS & SPECIFIC LEADERBOARDS) */}
+      {/* 4. COMPETITIONS PAGE */}
       {activeTab === 'competitions' && (
         <div className="grid md:grid-cols-3 gap-6">
-          {/* Competition Selector List */}
           <section className="bg-slate-900/90 p-5 rounded-2xl border border-slate-800 space-y-3">
             <h2 className="text-lg font-bold text-yellow-400 border-b border-slate-800 pb-2">
               🏆 Tournaments
@@ -1077,7 +1153,6 @@ export default function Home() {
             </div>
           </section>
 
-          {/* Selected Competition Detail, Actions & Specific Leaderboard */}
           <section className="md:col-span-2 bg-slate-900/90 p-6 rounded-2xl border border-slate-800 space-y-6">
             {selectedComp ? (
               <>
@@ -1092,7 +1167,6 @@ export default function Home() {
                     <p className="text-xs text-slate-400">{selectedComp.description}</p>
                   </div>
 
-                  {/* Join / Leave Logic */}
                   <div>
                     {selectedComp.type === 'individual' ? (
                       (() => {
@@ -1139,7 +1213,6 @@ export default function Home() {
                   </div>
                 </div>
 
-                {/* Competition Specific Leaderboard */}
                 <div className="space-y-3">
                   <h3 className="font-bold text-amber-400 text-sm flex items-center gap-1.5">
                     🏆 Competition Leaderboard & Scoreboard
