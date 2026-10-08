@@ -7,6 +7,10 @@ const SUPABASE_ANON_KEY = "sb_publishable_5K3yRDYl2-OxwO78i2mk0A_GV4tDBGl";
 
 const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
+// SET YOUR VODAFONE CASH NUMBER AND INSTAPAY USERNAME HERE
+const VODAFONE_CASH_NUMBER = "010XXXXXXXX"; 
+const INSTAPAY_ADDRESS = "yourname@instapay"; 
+
 const LOGO_PRESETS = ['🛡️', '⚡', '🦅', '🦁', '🔥', '👑', '🐉', '⚔️', '⚽', '🏀', '🏐', '♟️'];
 const MAX_FILE_SIZE_MB = 2;
 
@@ -34,6 +38,7 @@ export default function Home() {
   const [competitions, setCompetitions] = useState([]);
   const [compParticipants, setCompParticipants] = useState([]);
   const [userDonations, setUserDonations] = useState([]);
+  const [allDonations, setAllDonations] = useState([]);
 
   // Active Session
   const [currentStudent, setCurrentStudent] = useState(null);
@@ -53,6 +58,13 @@ export default function Home() {
   const [gender, setGender] = useState('Male');
   const [grade, setGrade] = useState('G10');
   const [className, setClassName] = useState('1A');
+
+  // Donation Payment Modal States
+  const [donatingItem, setDonatingItem] = useState(null);
+  const [donationAmount, setDonationAmount] = useState('');
+  const [senderPhone, setSenderPhone] = useState('');
+  const [transactionId, setTransactionId] = useState('');
+  const [submittingDonation, setSubmittingDonation] = useState(false);
 
   // Team Form States
   const [newTeamName, setNewTeamName] = useState('');
@@ -127,6 +139,15 @@ export default function Home() {
         .select('*, fundraising(item_name)')
         .eq('student_id', currentStudent.id);
       if (donData) setUserDonations(donData);
+
+      // Fetch all donations if Admin
+      if (currentStudent.is_admin) {
+        const { data: allDon } = await supabase
+          .from('donations')
+          .select('*, fundraising(item_name), profiles(full_name, email)')
+          .order('created_at', { ascending: false });
+        if (allDon) setAllDonations(allDon);
+      }
     }
   }
 
@@ -256,6 +277,7 @@ export default function Home() {
     localStorage.removeItem('stem_student_email');
     setCurrentStudent(null);
     setUserDonations([]);
+    setAllDonations([]);
   }
 
   async function handleDeleteAccount() {
@@ -270,8 +292,89 @@ export default function Home() {
       alert('Your account has been deleted.');
       setCurrentStudent(null);
       setUserDonations([]);
+      setAllDonations([]);
       fetchData();
     }
+  }
+
+  // Submit Donation Transfer Request
+  async function handleSubmitDonationProof(e) {
+    e.preventDefault();
+    if (!currentStudent) return alert('Please sign in to donate.');
+    if (!donationAmount || Number(donationAmount) <= 0) return alert('Enter a valid donation amount.');
+    if (!senderPhone.trim()) return alert('Enter the sender phone number.');
+    if (!transactionId.trim()) return alert('Enter the Transaction Reference ID/Number.');
+
+    setSubmittingDonation(true);
+    try {
+      const { error } = await supabase.from('donations').insert([
+        {
+          student_id: currentStudent.id,
+          item_id: donatingItem.id,
+          amount: Number(donationAmount),
+          sender_phone: senderPhone.trim(),
+          transaction_id: transactionId.trim(),
+          status: 'pending',
+        },
+      ]);
+
+      if (error) {
+        alert('Submission failed: ' + error.message);
+      } else {
+        alert('Donation proof submitted successfully! 📩 Your contribution will be verified by the admin shortly.');
+        setDonatingItem(null);
+        setDonationAmount('');
+        setSenderPhone('');
+        setTransactionId('');
+        fetchData();
+      }
+    } catch (err) {
+      alert('Error: ' + err.message);
+    } finally {
+      setSubmittingDonation(false);
+    }
+  }
+
+  // ADMIN: Approve or Reject Donation
+  async function handleAdminDonationResponse(donation, approve) {
+    if (approve) {
+      // 1. Update donation status to approved
+      const { error: donErr } = await supabase
+        .from('donations')
+        .update({ status: 'approved' })
+        .eq('id', donation.id);
+
+      if (donErr) return alert('Error updating donation: ' + donErr.message);
+
+      // 2. Increase raised_amount in fundraising table
+      const item = fundraising.find((i) => i.id === donation.item_id);
+      const newTotal = (Number(item?.raised_amount) || 0) + Number(donation.amount);
+
+      await supabase
+        .from('fundraising')
+        .update({ raised_amount: newTotal })
+        .eq('id', donation.item_id);
+
+      // 3. Award 10 bonus points to student for real donation
+      const student = students.find((s) => s.id === donation.student_id);
+      if (student) {
+        await supabase
+          .from('profiles')
+          .update({ points: (student.points || 0) + 10 })
+          .eq('id', donation.student_id);
+      }
+
+      alert('Donation approved successfully! Crowdfunding total and student points updated. 🎉');
+    } else {
+      const { error: donErr } = await supabase
+        .from('donations')
+        .update({ status: 'rejected' })
+        .eq('id', donation.id);
+
+      if (donErr) return alert('Error rejecting donation: ' + donErr.message);
+      alert('Donation request rejected.');
+    }
+    fetchData();
   }
 
   // Respond to Team Invitation
@@ -511,29 +614,6 @@ export default function Home() {
     }
   }
 
-  async function handleDonate(itemId, currentAmount) {
-    if (!currentStudent) return alert('Please register/log in to donate.');
-
-    const amount = prompt('Enter donation amount in EGP:');
-    if (!amount || isNaN(amount) || Number(amount) <= 0) return;
-
-    const numAmount = Number(amount);
-    const newTotal = Number(currentAmount) + numAmount;
-
-    const { error } = await supabase
-      .from('fundraising')
-      .update({ raised_amount: newTotal })
-      .eq('id', itemId);
-
-    if (!error) {
-      await supabase.from('donations').insert([
-        { student_id: currentStudent.id, item_id: itemId, amount: numAmount },
-      ]);
-      alert('Thank you for contributing to STEM sports!');
-      fetchData();
-    }
-  }
-
   // Gender Themes
   const isFemale = currentStudent?.gender === 'Female';
   const themeClasses = isFemale
@@ -583,6 +663,8 @@ export default function Home() {
     (p) => p.student_id === currentStudent?.id || myCreatedTeamIds.includes(p.team_id)
   );
 
+  const pendingAdminDonations = allDonations.filter((d) => d.status === 'pending');
+
   const classStandings = students.reduce((acc, student) => {
     const cls = student.class_name || 'Unassigned';
     acc[cls] = (acc[cls] || 0) + (student.points || 0);
@@ -613,7 +695,7 @@ export default function Home() {
           { id: 'competitions', label: '🏆 Competitions' },
           { id: 'leaderboard', label: '🥇 Leaderboard' },
           { id: 'stemclass', label: '🏫 STEM SPORTS CLASS' },
-          { id: 'donations', label: '💰 Donations' },
+          { id: 'donations', label: `💰 Donations ${pendingAdminDonations.length > 0 ? `(${pendingAdminDonations.length})` : ''}` },
         ].map((tab) => (
           <button
             key={tab.id}
@@ -637,8 +719,13 @@ export default function Home() {
               <div className="flex flex-col md:flex-row justify-between items-start md:items-center border-b border-slate-700 pb-4 mb-6 gap-4">
                 <div>
                   <span className="text-xs uppercase tracking-wider text-slate-400">Student Profile</span>
-                  <h2 className={`text-2xl font-bold ${themeClasses.accentText}`}>
+                  <h2 className={`text-2xl font-bold flex items-center gap-2 ${themeClasses.accentText}`}>
                     Welcome, {currentStudent.full_name} ({currentStudent.gender})
+                    {currentStudent.is_admin && (
+                      <span className="bg-amber-500/20 text-amber-300 border border-amber-500/40 text-xs px-2.5 py-0.5 rounded-md font-extrabold">
+                        👑 Admin Leader
+                      </span>
+                    )}
                   </h2>
                 </div>
                 <div className="flex items-center gap-3">
@@ -659,6 +746,43 @@ export default function Home() {
                   </button>
                 </div>
               </div>
+
+              {/* ADMIN PANEL ALERT FOR PENDING DONATION APPROVALS */}
+              {currentStudent.is_admin && pendingAdminDonations.length > 0 && (
+                <div className="mb-6 bg-amber-500/10 border border-amber-500/50 p-4 rounded-2xl space-y-3">
+                  <h3 className="font-bold text-amber-300 text-sm flex items-center gap-2">
+                    <span>👑</span> ADMIN ALERT: Pending Equipment Donations ({pendingAdminDonations.length})
+                  </h3>
+                  <div className="space-y-2">
+                    {pendingAdminDonations.map((don) => (
+                      <div key={don.id} className="bg-slate-950 p-3 rounded-xl border border-slate-800 flex flex-col md:flex-row justify-between items-start md:items-center gap-2 text-xs">
+                        <div>
+                          <span className="font-bold text-white">{don.profiles?.full_name}</span> donated <span className="font-bold text-emerald-400">{don.amount} EGP</span> for <span className="underline">{don.fundraising?.item_name}</span>
+                          <div className="text-slate-400 text-xxs mt-0.5 space-x-2">
+                            <span>Phone: {don.sender_phone}</span>
+                            <span>•</span>
+                            <span>Tx ID: <strong className="text-slate-200">{don.transaction_id}</strong></span>
+                          </div>
+                        </div>
+                        <div className="flex gap-2">
+                          <button
+                            onClick={() => handleAdminDonationResponse(don, true)}
+                            className="bg-emerald-600 hover:bg-emerald-500 text-white font-bold px-3 py-1 rounded text-xs transition"
+                          >
+                            Approve ✅
+                          </button>
+                          <button
+                            onClick={() => handleAdminDonationResponse(don, false)}
+                            className="bg-rose-600 hover:bg-rose-500 text-white font-bold px-3 py-1 rounded text-xs transition"
+                          >
+                            Reject ❌
+                          </button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
 
               {/* Pending Team Invitations Alert */}
               {incomingTeamInvites.length > 0 && (
@@ -837,7 +961,12 @@ export default function Home() {
                         {userDonations.map((don) => (
                           <li key={don.id} className="flex justify-between text-slate-300 bg-slate-900 p-1.5 rounded border border-slate-800">
                             <span className="truncate pr-1">{don.fundraising?.item_name || 'Equipment'}</span>
-                            <span className="font-bold text-emerald-400">{don.amount} EGP</span>
+                            <span className={`font-bold text-xxs ${
+                              don.status === 'approved' ? 'text-emerald-400' :
+                              don.status === 'rejected' ? 'text-rose-400' : 'text-amber-400'
+                            }`}>
+                              {don.amount} EGP ({don.status || 'pending'})
+                            </span>
                           </li>
                         ))}
                       </ul>
@@ -1039,7 +1168,6 @@ export default function Home() {
       {/* 2. TEAMS PAGE */}
       {activeTab === 'teams' && (
         <div className="space-y-8">
-          {/* Incoming Team Join Requests */}
           {incomingTeamInvites.length > 0 && (
             <section className="bg-cyan-950/60 border border-cyan-700/60 p-5 rounded-2xl space-y-3">
               <h2 className="text-lg font-bold text-cyan-300 flex items-center gap-2">
@@ -1079,7 +1207,6 @@ export default function Home() {
             </section>
           )}
 
-          {/* Teams I Am In Section */}
           <section className="bg-slate-900/90 p-6 rounded-2xl border border-slate-800 space-y-4">
             <h2 className="text-xl font-bold text-white flex items-center gap-2">
               <span>🛡️</span> All Teams I Belong To ({myJoinedTeams.length})
@@ -1137,7 +1264,6 @@ export default function Home() {
             )}
           </section>
 
-          {/* Create & Manage Teams Section */}
           <div className="grid md:grid-cols-2 gap-6">
             <section className="bg-slate-900/90 p-6 rounded-2xl border border-slate-800 space-y-4">
               <h2 className="text-xl font-bold text-cyan-400">
@@ -1733,6 +1859,55 @@ export default function Home() {
             <p className="text-xs text-slate-400 mt-1">Transparent student-driven funding for new gym equipment and court repairs.</p>
           </div>
 
+          {/* ADMIN VERIFICATION TABLE ON DONATIONS TAB */}
+          {currentStudent?.is_admin && pendingAdminDonations.length > 0 && (
+            <div className="bg-amber-500/10 border border-amber-500/40 p-5 rounded-2xl space-y-3">
+              <h3 className="font-bold text-amber-300 text-sm flex items-center gap-2">
+                <span>👑</span> Admin Verification Queue ({pendingAdminDonations.length} Pending)
+              </h3>
+              <div className="overflow-x-auto">
+                <table className="w-full text-left text-xs bg-slate-950 rounded-xl overflow-hidden border border-slate-800">
+                  <thead>
+                    <tr className="border-b border-slate-800 text-slate-400">
+                      <th className="p-3">Student</th>
+                      <th className="p-3">Target Item</th>
+                      <th className="p-3">Amount</th>
+                      <th className="p-3">Sender Phone</th>
+                      <th className="p-3">Tx ID</th>
+                      <th className="p-3">Action</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {pendingAdminDonations.map((don) => (
+                      <tr key={don.id} className="border-b border-slate-800/50">
+                        <td className="p-3 font-bold text-white">{don.profiles?.full_name}</td>
+                        <td className="p-3 text-slate-300">{don.fundraising?.item_name}</td>
+                        <td className="p-3 font-bold text-emerald-400">{don.amount} EGP</td>
+                        <td className="p-3 text-slate-300">{don.sender_phone}</td>
+                        <td className="p-3 font-mono text-cyan-300">{don.transaction_id}</td>
+                        <td className="p-3 space-x-2">
+                          <button
+                            onClick={() => handleAdminDonationResponse(don, true)}
+                            className="bg-emerald-600 hover:bg-emerald-500 text-white font-bold px-2.5 py-1 rounded text-xxs transition"
+                          >
+                            Approve ✅
+                          </button>
+                          <button
+                            onClick={() => handleAdminDonationResponse(don, false)}
+                            className="bg-rose-600 hover:bg-rose-500 text-white font-bold px-2.5 py-1 rounded text-xxs transition"
+                          >
+                            Reject ❌
+                          </button>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          )}
+
+          {/* Crowdfunding Items Grid */}
           <div className="grid md:grid-cols-3 gap-6">
             {fundraising.map((item) => {
               const percent = Math.min(100, Math.round((item.raised_amount / item.target_amount) * 100));
@@ -1750,7 +1925,7 @@ export default function Home() {
                     </div>
                   </div>
                   <button
-                    onClick={() => handleDonate(item.id, item.raised_amount)}
+                    onClick={() => setDonatingItem(item)}
                     className="w-full bg-emerald-600 hover:bg-emerald-500 text-white font-bold py-2 rounded-lg text-xs transition"
                   >
                     + Contribute / Donate
@@ -1760,6 +1935,87 @@ export default function Home() {
             })}
           </div>
         </section>
+      )}
+
+      {/* VODAFONE CASH & INSTAPAY DONATION PAYMENT MODAL */}
+      {donatingItem && (
+        <div className="fixed inset-0 bg-slate-950/80 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+          <div className="bg-slate-900 border border-slate-800 rounded-2xl p-6 max-w-md w-full space-y-4 text-sm shadow-2xl">
+            <div className="flex justify-between items-center border-b border-slate-800 pb-3">
+              <h3 className="font-bold text-lg text-white">Contribute to {donatingItem.item_name}</h3>
+              <button
+                onClick={() => setDonatingItem(null)}
+                className="text-slate-400 hover:text-white text-lg font-bold"
+              >
+                ✕
+              </button>
+            </div>
+
+            <div className="bg-emerald-500/10 border border-emerald-500/30 p-3.5 rounded-xl space-y-2 text-xs">
+              <span className="font-bold text-emerald-300 block">📱 Payment Instructions:</span>
+              <p className="text-slate-300">Transfer your donation using either method below:</p>
+              <div className="bg-slate-950 p-2.5 rounded border border-slate-800 space-y-1">
+                <p><strong className="text-amber-400">Vodafone Cash:</strong> <span className="font-mono text-white select-all">{VODAFONE_CASH_NUMBER}</span></p>
+                <p><strong className="text-purple-400">InstaPay:</strong> <span className="font-mono text-white select-all">{INSTAPAY_ADDRESS}</span></p>
+              </div>
+            </div>
+
+            <form onSubmit={handleSubmitDonationProof} className="space-y-3">
+              <div>
+                <label className="block text-xs text-slate-300 mb-1">Donation Amount (EGP)</label>
+                <input
+                  type="number"
+                  required
+                  min="1"
+                  placeholder="e.g. 50"
+                  value={donationAmount}
+                  onChange={(e) => setDonationAmount(e.target.value)}
+                  className="w-full bg-slate-950 border border-slate-700 rounded-lg p-2.5 text-white text-xs focus:outline-none"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs text-slate-300 mb-1">Your Sender Phone Number</label>
+                <input
+                  type="tel"
+                  required
+                  placeholder="010XXXXXXXX"
+                  value={senderPhone}
+                  onChange={(e) => setSenderPhone(e.target.value)}
+                  className="w-full bg-slate-950 border border-slate-700 rounded-lg p-2.5 text-white text-xs focus:outline-none"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs text-slate-300 mb-1">Transaction Reference ID / Number</label>
+                <input
+                  type="text"
+                  required
+                  placeholder="e.g. TXN98765432"
+                  value={transactionId}
+                  onChange={(e) => setTransactionId(e.target.value)}
+                  className="w-full bg-slate-950 border border-slate-700 rounded-lg p-2.5 text-white text-xs focus:outline-none"
+                />
+              </div>
+
+              <div className="flex gap-2 pt-2">
+                <button
+                  disabled={submittingDonation}
+                  className="w-full bg-emerald-600 hover:bg-emerald-500 font-bold py-2.5 rounded-lg text-white transition text-xs"
+                >
+                  {submittingDonation ? 'Submitting...' : 'Submit Donation Proof'}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setDonatingItem(null)}
+                  className="bg-slate-800 text-xs text-slate-300 px-4 rounded-lg hover:bg-slate-700"
+                >
+                  Cancel
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
       )}
     </div>
   );
