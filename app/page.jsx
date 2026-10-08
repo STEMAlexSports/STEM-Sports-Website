@@ -240,6 +240,44 @@ export default function Home() {
     }
   }
 
+  // Respond to Team Joining Request (Accept/Decline)
+  async function handleRespondTeamInvite(membershipId, accept) {
+    if (accept) {
+      const { error } = await supabase
+        .from('team_members')
+        .update({ status: 'accepted' })
+        .eq('id', membershipId);
+
+      if (error) alert('Error accepting invite: ' + error.message);
+      else {
+        alert('You have successfully joined the team! 🏆');
+        fetchData();
+      }
+    } else {
+      const { error } = await supabase
+        .from('team_members')
+        .delete()
+        .eq('id', membershipId);
+
+      if (error) alert('Error declining invite: ' + error.message);
+      else {
+        alert('Team invitation declined.');
+        fetchData();
+      }
+    }
+  }
+
+  // Leave a team (Member self-leave)
+  async function handleLeaveTeam(membershipId) {
+    if (!confirm('Are you sure you want to leave this team?')) return;
+    const { error } = await supabase.from('team_members').delete().eq('id', membershipId);
+    if (error) alert('Error leaving team: ' + error.message);
+    else {
+      alert('You left the team.');
+      fetchData();
+    }
+  }
+
   // Join Individual Competition
   async function handleJoinIndividualComp(compId) {
     if (!currentStudent) return alert('Please log in first.');
@@ -260,7 +298,6 @@ export default function Home() {
     }
   }
 
-  // Leave Individual Competition
   async function handleLeaveIndividualComp(participantId) {
     if (!confirm('Are you sure you want to sign out of this competition?')) return;
 
@@ -303,7 +340,6 @@ export default function Home() {
     }
   }
 
-  // Leave Team Competition
   async function handleLeaveTeamComp(participantId) {
     if (!confirm('Are you sure you want to withdraw this team from the competition?')) return;
 
@@ -354,7 +390,7 @@ export default function Home() {
         alert('Error creating team: ' + error.message);
       } else {
         await supabase.from('team_members').insert([
-          { team_id: createdTeam.id, student_id: currentStudent.id, role: 'Captain' },
+          { team_id: createdTeam.id, student_id: currentStudent.id, role: 'Captain', status: 'accepted' },
         ]);
         alert(`Clan/Team "${newTeamName}" created successfully!`);
       }
@@ -375,16 +411,17 @@ export default function Home() {
     }
   }
 
+  // Send Join Request to Student (Captain invites Student)
   async function handleAddClanMember(teamId) {
-    if (!selectedStudentToAdd) return alert('Please select a student to add.');
+    if (!selectedStudentToAdd) return alert('Please select a student to invite.');
 
     const { error } = await supabase.from('team_members').insert([
-      { team_id: teamId, student_id: selectedStudentToAdd, role: 'Member' },
+      { team_id: teamId, student_id: selectedStudentToAdd, role: 'Member', status: 'pending' },
     ]);
 
-    if (error) alert('Could not add member: ' + error.message);
+    if (error) alert('Could not send invite (Student might already be invited or in team): ' + error.message);
     else {
-      alert('Clan member added successfully!');
+      alert('Team invitation sent! The student will join once they accept.');
       setSelectedStudentToAdd('');
       fetchData();
     }
@@ -485,10 +522,30 @@ export default function Home() {
         navActive: 'bg-blue-600 text-white font-bold shadow-lg',
       };
 
-  const myTeams = teams.filter((t) => t.captain_id === currentStudent?.id);
-  const myTeamIds = myTeams.map((t) => t.id);
-  const incomingChallenges = matches.filter(
-    (m) => myTeamIds.includes(m.opponent_team_id) && m.status === 'pending'
+  // Teams where current student is Captain
+  const myCreatedTeams = teams.filter((t) => t.captain_id === currentStudent?.id);
+  const myCreatedTeamIds = myCreatedTeams.map((t) => t.id);
+
+  // Teams student belongs to (both Captain and Accepted Member)
+  const myAcceptedMemberships = teamMembers.filter(
+    (tm) => tm.student_id === currentStudent?.id && (tm.status === 'accepted' || !tm.status)
+  );
+
+  const myJoinedTeams = myAcceptedMemberships
+    .map((tm) => {
+      const teamObj = teams.find((t) => t.id === tm.team_id);
+      return teamObj ? { ...teamObj, membershipId: tm.id, role: tm.role } : null;
+    })
+    .filter(Boolean);
+
+  // Incoming Team Join Invitations for current student
+  const incomingTeamInvites = teamMembers.filter(
+    (tm) => tm.student_id === currentStudent?.id && tm.status === 'pending'
+  );
+
+  // Incoming Match Challenges for teams where current student is Captain
+  const incomingMatchChallenges = matches.filter(
+    (m) => myCreatedTeamIds.includes(m.opponent_team_id) && m.status === 'pending'
   );
 
   const selectedComp = competitions.find((c) => c.id === selectedCompId);
@@ -496,7 +553,7 @@ export default function Home() {
 
   // My Joined Competition Entries
   const myJoinedCompEntries = compParticipants.filter(
-    (p) => p.student_id === currentStudent?.id || myTeamIds.includes(p.team_id)
+    (p) => p.student_id === currentStudent?.id || myCreatedTeamIds.includes(p.team_id)
   );
 
   const classStandings = students.reduce((acc, student) => {
@@ -524,7 +581,7 @@ export default function Home() {
       <nav className="bg-slate-900/90 border border-slate-800 p-2 rounded-2xl flex flex-wrap justify-center gap-1.5 md:gap-2 shadow-xl sticky top-4 z-50 backdrop-blur-md text-xs md:text-sm">
         {[
           { id: 'dashboard', label: '📊 Dashboard' },
-          { id: 'teams', label: '🛡️ Teams' },
+          { id: 'teams', label: `🛡️ Teams ${incomingTeamInvites.length > 0 ? `(${incomingTeamInvites.length})` : ''}` },
           { id: 'matches', label: '⚔️ Friendly Matches' },
           { id: 'competitions', label: '🏆 Competitions' },
           { id: 'leaderboard', label: '🥇 Leaderboard' },
@@ -576,13 +633,52 @@ export default function Home() {
                 </div>
               </div>
 
-              {/* Incoming Challenge Alerts */}
-              {incomingChallenges.length > 0 && (
+              {/* Pending Team Invitations Alert */}
+              {incomingTeamInvites.length > 0 && (
+                <div className="mb-6 bg-blue-500/10 border border-blue-500/40 p-4 rounded-xl space-y-3">
+                  <h3 className="font-bold text-cyan-300 text-sm flex items-center gap-2">
+                    <span>📩</span> Incoming Team Join Requests!
+                  </h3>
+                  {incomingTeamInvites.map((invite) => {
+                    const teamObj = teams.find((t) => t.id === invite.team_id);
+                    const captainObj = students.find((s) => s.id === teamObj?.captain_id);
+                    return (
+                      <div key={invite.id} className="bg-slate-950 p-3 rounded-lg border border-slate-800 flex flex-col md:flex-row justify-between items-start md:items-center gap-2 text-xs">
+                        <div>
+                          <span className="font-bold text-white flex items-center gap-1.5">
+                            <TeamLogo logo={teamObj?.logo_url} /> {teamObj?.team_name} ({teamObj?.sport})
+                          </span>
+                          <p className="text-slate-400 text-xxs mt-0.5">
+                            Captain <span className="text-slate-200">{captainObj?.full_name}</span> invited you to join their team.
+                          </p>
+                        </div>
+                        <div className="flex gap-2">
+                          <button
+                            onClick={() => handleRespondTeamInvite(invite.id, true)}
+                            className="bg-emerald-600 hover:bg-emerald-500 text-white font-bold px-3 py-1.5 rounded transition"
+                          >
+                            Accept & Join
+                          </button>
+                          <button
+                            onClick={() => handleRespondTeamInvite(invite.id, false)}
+                            className="bg-rose-600 hover:bg-rose-500 text-white font-bold px-3 py-1.5 rounded transition"
+                          >
+                            Decline
+                          </button>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+
+              {/* Incoming Match Challenges Alert */}
+              {incomingMatchChallenges.length > 0 && (
                 <div className="mb-6 bg-amber-500/10 border border-amber-500/40 p-4 rounded-xl space-y-3">
                   <h3 className="font-bold text-amber-400 text-sm flex items-center gap-2">
                     <span>⚠️</span> Incoming Friendly Match Requests!
                   </h3>
-                  {incomingChallenges.map((match) => {
+                  {incomingMatchChallenges.map((match) => {
                     const challengerTeam = teams.find((t) => t.id === match.challenger_team_id);
                     const opponentTeam = teams.find((t) => t.id === match.opponent_team_id);
                     return (
@@ -613,7 +709,7 @@ export default function Home() {
                 </div>
               )}
 
-              {/* 4-Card Grid on Dashboard: Personal Info, My Teams, My Competitions, My Donations */}
+              {/* 4-Card Dashboard Grid */}
               <div className="grid md:grid-cols-2 lg:grid-cols-4 gap-6 text-sm">
                 {/* Personal Info */}
                 <div className="bg-slate-950/60 p-4 rounded-xl border border-slate-800 space-y-2 flex flex-col justify-between">
@@ -627,29 +723,33 @@ export default function Home() {
                   <span className="text-xxs text-amber-400 font-bold block pt-2">Registered Student</span>
                 </div>
 
-                {/* My Created Teams */}
+                {/* My Teams (Both Captain & Accepted Member) */}
                 <div className="bg-slate-950/60 p-4 rounded-xl border border-slate-800 space-y-2 flex flex-col justify-between">
                   <div>
                     <div className="flex justify-between items-center border-b border-slate-800 pb-2 mb-2">
-                      <h3 className="font-bold text-slate-300">My Teams ({myTeams.length})</h3>
+                      <h3 className="font-bold text-slate-300">My Teams ({myJoinedTeams.length})</h3>
                       <button
                         onClick={() => setActiveTab('teams')}
                         className="text-xxs text-cyan-400 hover:underline"
                       >
-                        + Manage
+                        View All
                       </button>
                     </div>
 
-                    {myTeams.length === 0 ? (
-                      <p className="text-xs text-slate-500">No teams created yet.</p>
+                    {myJoinedTeams.length === 0 ? (
+                      <p className="text-xs text-slate-500">Not in any team yet.</p>
                     ) : (
                       <ul className="space-y-1.5 max-h-32 overflow-y-auto pr-1">
-                        {myTeams.map((t) => (
+                        {myJoinedTeams.map((t) => (
                           <li key={t.id} className="text-xs flex items-center justify-between bg-slate-900 p-1.5 rounded border border-slate-800">
-                            <span className="font-semibold text-white flex items-center gap-1">
+                            <span className="font-semibold text-white flex items-center gap-1 truncate pr-1">
                               <TeamLogo logo={t.logo_url} sizeClass="w-4 h-4 text-xs" /> {t.team_name}
                             </span>
-                            <span className="text-xxs text-slate-400">({t.sport})</span>
+                            <span className={`text-xxs px-1.5 py-0.5 rounded font-bold ${
+                              t.captain_id === currentStudent.id ? 'bg-amber-500/20 text-amber-300' : 'bg-slate-800 text-slate-300'
+                            }`}>
+                              {t.captain_id === currentStudent.id ? 'Captain' : 'Member'}
+                            </span>
                           </li>
                         ))}
                       </ul>
@@ -659,7 +759,7 @@ export default function Home() {
                     onClick={() => setActiveTab('teams')}
                     className="w-full bg-slate-800 hover:bg-slate-700 text-xxs py-1.5 rounded text-cyan-300 font-bold transition"
                   >
-                    Go to Team Building →
+                    Go to Teams Page →
                   </button>
                 </div>
 
@@ -813,188 +913,98 @@ export default function Home() {
 
       {/* 2. TEAMS PAGE */}
       {activeTab === 'teams' && (
-        <div className="grid md:grid-cols-2 gap-6">
-          <section className="bg-slate-900/90 p-6 rounded-2xl border border-slate-800 space-y-4">
-            <h2 className="text-xl font-bold text-cyan-400">
-              {editingTeamId ? 'Edit Team / Clan' : 'Create New Team / Clan'}
-            </h2>
-            <form onSubmit={handleSaveTeam} className="space-y-3 text-sm">
-              <div>
-                <label className="block text-xs text-slate-400 mb-1">Team Name</label>
-                <input
-                  type="text"
-                  placeholder="e.g. Alex STEM Dragons"
-                  value={newTeamName}
-                  onChange={(e) => setNewTeamName(e.target.value)}
-                  className="w-full bg-slate-950 border border-slate-700 rounded p-2 text-xs text-white"
-                />
-              </div>
-
-              <div className="space-y-2">
-                <label className="block text-xs text-slate-400">Team Logo (Preset or Upload)</label>
-                <div className="flex items-center gap-3 bg-slate-950 p-2.5 rounded border border-slate-800">
-                  <div className="flex-shrink-0 text-center">
-                    <span className="text-xxs text-slate-400 block mb-1">Preview</span>
-                    <TeamLogo logo={newTeamLogo} sizeClass="w-10 h-10 text-2xl" />
-                  </div>
-
-                  <div className="w-full space-y-2">
-                    <select
-                      value={newTeamLogo.startsWith('http') ? 'custom' : newTeamLogo}
-                      onChange={(e) => {
-                        if (e.target.value !== 'custom') setNewTeamLogo(e.target.value);
-                      }}
-                      className="w-full bg-slate-900 border border-slate-700 rounded p-1.5 text-xs text-white"
-                    >
-                      <optgroup label="Emoji Presets">
-                        {LOGO_PRESETS.map((logo) => (
-                          <option key={logo} value={logo}>{logo} Preset Logo</option>
-                        ))}
-                      </optgroup>
-                      {newTeamLogo.startsWith('http') && (
-                        <option value="custom">🖼️ Uploaded Custom Logo</option>
-                      )}
-                    </select>
-
-                    <div>
-                      <input
-                        type="file"
-                        accept="image/*"
-                        onChange={handleLogoUpload}
-                        disabled={uploadingLogo}
-                        className="text-xxs text-slate-400 file:mr-2 file:py-1 file:px-2 file:rounded file:border-0 file:text-xxs file:font-semibold file:bg-blue-600 file:text-white cursor-pointer"
-                      />
-                      <span className="text-xxs text-slate-500 block mt-0.5">
-                        {uploadingLogo ? 'Uploading...' : `Max limit: ${MAX_FILE_SIZE_MB}MB`}
-                      </span>
-                    </div>
-                  </div>
-                </div>
-              </div>
-
-              <div>
-                <label className="block text-xs text-slate-400 mb-1">Primary Sport</label>
-                <select
-                  value={newTeamSport}
-                  onChange={(e) => setNewTeamSport(e.target.value)}
-                  className="w-full bg-slate-950 border border-slate-700 rounded p-2 text-xs text-white"
-                >
-                  <option>Football</option>
-                  <option>Volleyball</option>
-                  <option>Basketball</option>
-                  <option>Table Tennis</option>
-                  <option>Chess</option>
-                </select>
-              </div>
-
-              <div className="flex gap-2">
-                <button
-                  disabled={uploadingLogo}
-                  className={`w-full text-xs font-bold py-2.5 rounded transition ${themeClasses.buttonBg}`}
-                >
-                  {editingTeamId ? 'Save Changes' : 'Create Team'}
-                </button>
-                {editingTeamId && (
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setEditingTeamId(null);
-                      setNewTeamName('');
-                      setNewTeamLogo('🛡️');
-                    }}
-                    className="bg-slate-700 text-xs px-3 rounded"
-                  >
-                    Cancel
-                  </button>
-                )}
-              </div>
-            </form>
-          </section>
-
-          <section className="bg-slate-900/90 p-6 rounded-2xl border border-slate-800 space-y-4">
-            <h2 className="text-xl font-bold text-slate-200">My Created Teams & Clan Roster</h2>
-            {!currentStudent ? (
-              <p className="text-xs text-slate-500">Please register/sign in to view and manage your teams.</p>
-            ) : myTeams.length === 0 ? (
-              <p className="text-xs text-slate-500">You haven't created any teams yet.</p>
-            ) : (
-              <div className="space-y-4 max-h-96 overflow-y-auto pr-1">
-                {myTeams.map((team) => {
-                  const members = teamMembers.filter((tm) => tm.team_id === team.id);
+        <div className="space-y-8">
+          {/* Incoming Team Join Requests */}
+          {incomingTeamInvites.length > 0 && (
+            <section className="bg-cyan-950/60 border border-cyan-700/60 p-5 rounded-2xl space-y-3">
+              <h2 className="text-lg font-bold text-cyan-300 flex items-center gap-2">
+                <span>📩</span> Pending Team Invitations for You
+              </h2>
+              <div className="grid md:grid-cols-2 gap-4">
+                {incomingTeamInvites.map((invite) => {
+                  const teamObj = teams.find((t) => t.id === invite.team_id);
+                  const captainObj = students.find((s) => s.id === teamObj?.captain_id);
                   return (
-                    <div key={team.id} className="bg-slate-950 p-3.5 rounded-xl border border-slate-800 space-y-2 text-xs">
-                      <div className="flex justify-between items-center">
+                    <div key={invite.id} className="bg-slate-950 p-4 rounded-xl border border-slate-800 flex justify-between items-center text-xs">
+                      <div>
                         <span className="font-bold text-white text-sm flex items-center gap-1.5">
-                          <TeamLogo logo={team.logo_url} /> {team.team_name} <span className="text-xxs font-normal text-slate-400">({team.sport})</span>
+                          <TeamLogo logo={teamObj?.logo_url} /> {teamObj?.team_name}
                         </span>
-                        <div className="flex gap-1">
-                          <button
-                            onClick={() => {
-                              setEditingTeamId(team.id);
-                              setNewTeamName(team.team_name);
-                              setNewTeamSport(team.sport);
-                              setNewTeamLogo(team.logo_url || '🛡️');
-                            }}
-                            className="bg-blue-600/40 hover:bg-blue-600 text-white px-2 py-0.5 rounded text-xxs"
-                          >
-                            Edit
-                          </button>
-                          <button
-                            onClick={() => handleDeleteTeam(team.id)}
-                            className="bg-red-600/40 hover:bg-red-600 text-white px-2 py-0.5 rounded text-xxs"
-                          >
-                            Delete
-                          </button>
+                        <span className="text-slate-400 block mt-1">Sport: {teamObj?.sport}</span>
+                        <span className="text-slate-400 block text-xxs">Invited by Captain: {captainObj?.full_name}</span>
+                      </div>
+                      <div className="flex flex-col gap-1.5">
+                        <button
+                          onClick={() => handleRespondTeamInvite(invite.id, true)}
+                          className="bg-emerald-600 hover:bg-emerald-500 text-white font-bold px-3 py-1.5 rounded transition text-xs"
+                        >
+                          Accept & Join
+                        </button>
+                        <button
+                          onClick={() => handleRespondTeamInvite(invite.id, false)}
+                          className="bg-rose-600 hover:bg-rose-500 text-white font-bold px-3 py-1.5 rounded transition text-xs"
+                        >
+                          Decline
+                        </button>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </section>
+          )}
+
+          {/* Teams I Am In Section (As Captain or Member) */}
+          <section className="bg-slate-900/90 p-6 rounded-2xl border border-slate-800 space-y-4">
+            <h2 className="text-xl font-bold text-white flex items-center gap-2">
+              <span>🛡️</span> All Teams I Belong To ({myJoinedTeams.length})
+            </h2>
+            {myJoinedTeams.length === 0 ? (
+              <p className="text-xs text-slate-500">You are not in any team yet. Accept an invitation or create a team below!</p>
+            ) : (
+              <div className="grid md:grid-cols-2 gap-4">
+                {myJoinedTeams.map((team) => {
+                  const members = teamMembers.filter((tm) => tm.team_id === team.id && (tm.status === 'accepted' || !tm.status));
+                  const isCaptain = team.captain_id === currentStudent?.id;
+
+                  return (
+                    <div key={team.id} className="bg-slate-950 p-4 rounded-xl border border-slate-800 space-y-3 text-xs">
+                      <div className="flex justify-between items-center border-b border-slate-800 pb-2">
+                        <span className="font-bold text-white text-sm flex items-center gap-2">
+                          <TeamLogo logo={team.logo_url} /> {team.team_name}
+                          <span className="text-xxs font-normal text-slate-400">({team.sport})</span>
+                        </span>
+                        <div className="flex items-center gap-2">
+                          <span className={`text-xxs px-2 py-0.5 rounded font-bold ${
+                            isCaptain ? 'bg-amber-500/20 text-amber-300 border border-amber-500/30' : 'bg-blue-500/20 text-blue-300 border border-blue-500/30'
+                          }`}>
+                            {isCaptain ? 'Captain' : 'Member'}
+                          </span>
+                          {!isCaptain && (
+                            <button
+                              onClick={() => handleLeaveTeam(team.membershipId)}
+                              className="text-red-400 hover:underline text-xxs"
+                            >
+                              Leave
+                            </button>
+                          )}
                         </div>
                       </div>
 
-                      <div className="bg-slate-900 p-2.5 rounded-lg border border-slate-800">
-                        <span className="text-xxs font-bold text-slate-400 uppercase block mb-1">Clan Roster:</span>
-                        {members.length === 0 ? (
-                          <p className="text-xxs text-slate-500">No members added yet.</p>
-                        ) : (
-                          <ul className="space-y-1">
-                            {members.map((m) => {
-                              const prof = students.find((s) => s.id === m.student_id);
-                              return (
-                                <li key={m.id} className="flex justify-between items-center text-xxs">
-                                  <span>👤 {prof?.full_name || 'Student'} ({prof?.class_name}) - <span className="text-amber-400">{m.role}</span></span>
-                                  {m.student_id !== currentStudent.id && (
-                                    <button
-                                      onClick={() => handleRemoveClanMember(m.id)}
-                                      className="text-red-400 hover:underline"
-                                    >
-                                      Remove
-                                    </button>
-                                  )}
-                                </li>
-                              );
-                            })}
-                          </ul>
-                        )}
-
-                        <div className="mt-2.5 flex gap-1">
-                          <select
-                            value={selectedStudentToAdd}
-                            onChange={(e) => setSelectedStudentToAdd(e.target.value)}
-                            className="w-full bg-slate-950 border border-slate-700 rounded text-xxs p-1 text-white"
-                          >
-                            <option value="">Select Student to Add...</option>
-                            {students
-                              .filter((s) => s.id !== currentStudent.id)
-                              .map((s) => (
-                                <option key={s.id} value={s.id}>
-                                  {s.full_name} ({s.class_name})
-                                </option>
-                              ))}
-                          </select>
-                          <button
-                            onClick={() => handleAddClanMember(team.id)}
-                            className="bg-emerald-600 hover:bg-emerald-500 text-white text-xxs px-2 rounded font-bold"
-                          >
-                            + Add
-                          </button>
-                        </div>
+                      {/* Roster List */}
+                      <div>
+                        <span className="text-xxs font-bold text-slate-400 uppercase block mb-1">Active Clan Roster:</span>
+                        <ul className="space-y-1">
+                          {members.map((m) => {
+                            const prof = students.find((s) => s.id === m.student_id);
+                            return (
+                              <li key={m.id} className="flex justify-between items-center text-xxs text-slate-300">
+                                <span>👤 {prof?.full_name || 'Student'} ({prof?.class_name})</span>
+                                <span className="text-amber-400 font-bold">{m.role}</span>
+                              </li>
+                            );
+                          })}
+                        </ul>
                       </div>
                     </div>
                   );
@@ -1002,6 +1012,207 @@ export default function Home() {
               </div>
             )}
           </section>
+
+          {/* Create & Manage Teams Section (As Captain) */}
+          <div className="grid md:grid-cols-2 gap-6">
+            <section className="bg-slate-900/90 p-6 rounded-2xl border border-slate-800 space-y-4">
+              <h2 className="text-xl font-bold text-cyan-400">
+                {editingTeamId ? 'Edit Team / Clan' : 'Create New Team / Clan'}
+              </h2>
+              <form onSubmit={handleSaveTeam} className="space-y-3 text-sm">
+                <div>
+                  <label className="block text-xs text-slate-400 mb-1">Team Name</label>
+                  <input
+                    type="text"
+                    placeholder="e.g. Alex STEM Dragons"
+                    value={newTeamName}
+                    onChange={(e) => setNewTeamName(e.target.value)}
+                    className="w-full bg-slate-950 border border-slate-700 rounded p-2 text-xs text-white"
+                  />
+                </div>
+
+                <div className="space-y-2">
+                  <label className="block text-xs text-slate-400">Team Logo (Preset or Upload)</label>
+                  <div className="flex items-center gap-3 bg-slate-950 p-2.5 rounded border border-slate-800">
+                    <div className="flex-shrink-0 text-center">
+                      <span className="text-xxs text-slate-400 block mb-1">Preview</span>
+                      <TeamLogo logo={newTeamLogo} sizeClass="w-10 h-10 text-2xl" />
+                    </div>
+
+                    <div className="w-full space-y-2">
+                      <select
+                        value={newTeamLogo.startsWith('http') ? 'custom' : newTeamLogo}
+                        onChange={(e) => {
+                          if (e.target.value !== 'custom') setNewTeamLogo(e.target.value);
+                        }}
+                        className="w-full bg-slate-900 border border-slate-700 rounded p-1.5 text-xs text-white"
+                      >
+                        <optgroup label="Emoji Presets">
+                          {LOGO_PRESETS.map((logo) => (
+                            <option key={logo} value={logo}>{logo} Preset Logo</option>
+                          ))}
+                        </optgroup>
+                        {newTeamLogo.startsWith('http') && (
+                          <option value="custom">🖼️ Uploaded Custom Logo</option>
+                        )}
+                      </select>
+
+                      <div>
+                        <input
+                          type="file"
+                          accept="image/*"
+                          onChange={handleLogoUpload}
+                          disabled={uploadingLogo}
+                          className="text-xxs text-slate-400 file:mr-2 file:py-1 file:px-2 file:rounded file:border-0 file:text-xxs file:font-semibold file:bg-blue-600 file:text-white cursor-pointer"
+                        />
+                        <span className="text-xxs text-slate-500 block mt-0.5">
+                          {uploadingLogo ? 'Uploading...' : `Max limit: ${MAX_FILE_SIZE_MB}MB`}
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                <div>
+                  <label className="block text-xs text-slate-400 mb-1">Primary Sport</label>
+                  <select
+                    value={newTeamSport}
+                    onChange={(e) => setNewTeamSport(e.target.value)}
+                    className="w-full bg-slate-950 border border-slate-700 rounded p-2 text-xs text-white"
+                  >
+                    <option>Football</option>
+                    <option>Volleyball</option>
+                    <option>Basketball</option>
+                    <option>Table Tennis</option>
+                    <option>Chess</option>
+                  </select>
+                </div>
+
+                <div className="flex gap-2">
+                  <button
+                    disabled={uploadingLogo}
+                    className={`w-full text-xs font-bold py-2.5 rounded transition ${themeClasses.buttonBg}`}
+                  >
+                    {editingTeamId ? 'Save Changes' : 'Create Team'}
+                  </button>
+                  {editingTeamId && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setEditingTeamId(null);
+                        setNewTeamName('');
+                        setNewTeamLogo('🛡️');
+                      }}
+                      className="bg-slate-700 text-xs px-3 rounded"
+                    >
+                      Cancel
+                    </button>
+                  )}
+                </div>
+              </form>
+            </section>
+
+            <section className="bg-slate-900/90 p-6 rounded-2xl border border-slate-800 space-y-4">
+              <h2 className="text-xl font-bold text-slate-200">Teams I Manage (As Captain) & Invites</h2>
+              {!currentStudent ? (
+                <p className="text-xs text-slate-500">Please register/sign in to manage your teams.</p>
+              ) : myCreatedTeams.length === 0 ? (
+                <p className="text-xs text-slate-500">You haven't created any teams yet.</p>
+              ) : (
+                <div className="space-y-4 max-h-96 overflow-y-auto pr-1">
+                  {myCreatedTeams.map((team) => {
+                    const allMembers = teamMembers.filter((tm) => tm.team_id === team.id);
+                    return (
+                      <div key={team.id} className="bg-slate-950 p-3.5 rounded-xl border border-slate-800 space-y-2 text-xs">
+                        <div className="flex justify-between items-center">
+                          <span className="font-bold text-white text-sm flex items-center gap-1.5">
+                            <TeamLogo logo={team.logo_url} /> {team.team_name} <span className="text-xxs font-normal text-slate-400">({team.sport})</span>
+                          </span>
+                          <div className="flex gap-1">
+                            <button
+                              onClick={() => {
+                                setEditingTeamId(team.id);
+                                setNewTeamName(team.team_name);
+                                setNewTeamSport(team.sport);
+                                setNewTeamLogo(team.logo_url || '🛡️');
+                              }}
+                              className="bg-blue-600/40 hover:bg-blue-600 text-white px-2 py-0.5 rounded text-xxs"
+                            >
+                              Edit
+                            </button>
+                            <button
+                              onClick={() => handleDeleteTeam(team.id)}
+                              className="bg-red-600/40 hover:bg-red-600 text-white px-2 py-0.5 rounded text-xxs"
+                            >
+                              Delete
+                            </button>
+                          </div>
+                        </div>
+
+                        <div className="bg-slate-900 p-2.5 rounded-lg border border-slate-800 space-y-2">
+                          <span className="text-xxs font-bold text-slate-400 uppercase block mb-1">Roster & Invites:</span>
+                          {allMembers.length === 0 ? (
+                            <p className="text-xxs text-slate-500">No members or invites sent yet.</p>
+                          ) : (
+                            <ul className="space-y-1">
+                              {allMembers.map((m) => {
+                                const prof = students.find((s) => s.id === m.student_id);
+                                const isPending = m.status === 'pending';
+                                return (
+                                  <li key={m.id} className="flex justify-between items-center text-xxs">
+                                    <span>
+                                      👤 {prof?.full_name || 'Student'} ({prof?.class_name}) - {' '}
+                                      {isPending ? (
+                                        <span className="text-amber-400 font-semibold">Invite Pending ⏳</span>
+                                      ) : (
+                                        <span className="text-emerald-400 font-semibold">{m.role}</span>
+                                      )}
+                                    </span>
+                                    {m.student_id !== currentStudent.id && (
+                                      <button
+                                        onClick={() => handleRemoveClanMember(m.id)}
+                                        className="text-red-400 hover:underline"
+                                      >
+                                        Remove
+                                      </button>
+                                    )}
+                                  </li>
+                                );
+                              })}
+                            </ul>
+                          )}
+
+                          {/* Invite Student to Team */}
+                          <div className="mt-2.5 flex gap-1 pt-1 border-t border-slate-800">
+                            <select
+                              value={selectedStudentToAdd}
+                              onChange={(e) => setSelectedStudentToAdd(e.target.value)}
+                              className="w-full bg-slate-950 border border-slate-700 rounded text-xxs p-1 text-white"
+                            >
+                              <option value="">Select Student to Invite...</option>
+                              {students
+                                .filter((s) => s.id !== currentStudent.id)
+                                .map((s) => (
+                                  <option key={s.id} value={s.id}>
+                                    {s.full_name} ({s.class_name})
+                                  </option>
+                                ))}
+                            </select>
+                            <button
+                              onClick={() => handleAddClanMember(team.id)}
+                              className="bg-emerald-600 hover:bg-emerald-500 text-white text-xxs px-2 rounded font-bold whitespace-nowrap"
+                            >
+                              + Send Invite
+                            </button>
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </section>
+          </div>
         </div>
       )}
 
@@ -1019,7 +1230,7 @@ export default function Home() {
                   className="w-full bg-slate-950 border border-slate-700 rounded-lg p-2.5 text-white"
                 >
                   <option value="">Select your team...</option>
-                  {myTeams.map((t) => (
+                  {myCreatedTeams.map((t) => (
                     <option key={t.id} value={t.id}>
                       {t.logo_url?.startsWith('http') ? '🖼️' : t.logo_url} {t.team_name} ({t.sport})
                     </option>
@@ -1196,7 +1407,7 @@ export default function Home() {
                             className="bg-slate-950 border border-slate-700 text-xs rounded p-2 text-white"
                           >
                             <option value="">Select your created team...</option>
-                            {myTeams.map((t) => (
+                            {myCreatedTeams.map((t) => (
                               <option key={t.id} value={t.id}>{t.logo_url} {t.team_name}</option>
                             ))}
                           </select>
