@@ -47,13 +47,15 @@ export default function Home() {
   const [selectedCompId, setSelectedCompId] = useState(null);
   const [teamToRegisterId, setTeamToRegisterId] = useState('');
 
-  // Auth Card Mode ('login' | 'register')
+  // Auth Card Mode ('login' | 'register' | 'otp')
   const [authMode, setAuthMode] = useState('login');
+  const [loadingAuth, setLoadingAuth] = useState(false);
 
   // Auth Input States
   const [fullName, setFullName] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [otpCode, setOtpCode] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [gender, setGender] = useState('Male');
   const [grade, setGrade] = useState('G10');
@@ -219,7 +221,7 @@ export default function Home() {
     alert(`Welcome back, ${existing.full_name}! 🏆`);
   }
 
-  // Handle Account Registration with Password Setup
+  // Step 1: Handle Account Registration via Supabase Auth
   async function handleRegister(e) {
     e.preventDefault();
     if (!fullName.trim()) return alert('Please enter your full name.');
@@ -238,37 +240,107 @@ export default function Home() {
       return alert('Error: Classes D, E, and F are reserved for Female students only.');
     }
 
-    const { data: existing } = await supabase
-      .from('profiles')
-      .select('*')
-      .eq('email', cleanEmail)
-      .single();
+    setLoadingAuth(true);
+    try {
+      // Register with Supabase Auth to trigger email verification code
+      const { data, error } = await supabase.auth.signUp({
+        email: cleanEmail,
+        password: password,
+        options: {
+          data: {
+            full_name: fullName,
+            gender: gender,
+            grade: grade,
+            class_name: className,
+          },
+        },
+      });
 
-    if (existing) {
-      return alert('An account with this email already exists! Please switch to Sign In.');
+      if (error) {
+        alert('Registration error: ' + error.message);
+        setLoadingAuth(false);
+        return;
+      }
+
+      // Check if email OTP confirmation is required
+      if (!data.session) {
+        setAuthMode('otp');
+        alert(`Verification code sent to ${cleanEmail}! Please check your inbox and enter the 6-digit code below.`);
+      } else {
+        await saveProfileToDatabase(data.user?.id, cleanEmail);
+      }
+    } catch (err) {
+      alert('Error: ' + err.message);
+    } finally {
+      setLoadingAuth(false);
     }
+  }
 
+  // Step 2: Verify OTP Code and Create Profile
+  async function handleVerifyOtp(e) {
+    e.preventDefault();
+    if (!otpCode.trim()) return alert('Please enter the verification code.');
+
+    const cleanEmail = email.trim().toLowerCase();
+    setLoadingAuth(true);
+
+    try {
+      const { data, error } = await supabase.auth.verifyOtp({
+        email: cleanEmail,
+        token: otpCode.trim(),
+        type: 'signup',
+      });
+
+      if (error) {
+        // Fallback attempt with 'email' type
+        const { data: fallbackData, error: fallbackError } = await supabase.auth.verifyOtp({
+          email: cleanEmail,
+          token: otpCode.trim(),
+          type: 'email',
+        });
+
+        if (fallbackError) throw fallbackError;
+        await saveProfileToDatabase(fallbackData.user?.id, cleanEmail);
+      } else {
+        await saveProfileToDatabase(data.user?.id, cleanEmail);
+      }
+    } catch (err) {
+      alert('Verification failed: ' + err.message);
+    } finally {
+      setLoadingAuth(false);
+    }
+  }
+
+  // Helper: Upsert Profile Details into 'profiles' Table
+  async function saveProfileToDatabase(userId, cleanEmail) {
     const newProfile = {
+      id: userId || undefined,
       full_name: fullName,
       email: cleanEmail,
-      password,
-      gender,
-      grade,
+      password: password,
+      gender: gender,
+      grade: grade,
       class_name: className,
       points: 10,
     };
 
-    const { data, error } = await supabase.from('profiles').insert([newProfile]).select().single();
+    const { data: profileData, error } = await supabase
+      .from('profiles')
+      .upsert([newProfile], { onConflict: 'email' })
+      .select()
+      .single();
 
     if (error) {
-      alert('Registration failed: ' + error.message);
+      alert('Error saving profile: ' + error.message);
     } else {
       localStorage.setItem('stem_student_email', cleanEmail);
-      setCurrentStudent(data);
-      alert('Account registered successfully! 🏆');
+      setCurrentStudent(profileData);
+      alert('Email verified & Account registered successfully! 🏆');
       setFullName('');
       setEmail('');
       setPassword('');
+      setOtpCode('');
+      setAuthMode('login');
       fetchData();
     }
   }
@@ -982,7 +1054,7 @@ export default function Home() {
               </div>
             </section>
           ) : (
-            /* Secure Student Login / Registration Section */
+            /* Secure Student Login / Registration / OTP Section */
             <section className={`p-6 rounded-2xl border shadow-xl ${themeClasses.cardBg}`}>
               {/* Auth Mode Toggle */}
               <div className="flex gap-2 border-b border-slate-800 pb-4 mb-6">
@@ -1001,7 +1073,7 @@ export default function Home() {
                   type="button"
                   onClick={() => setAuthMode('register')}
                   className={`px-5 py-2 rounded-xl text-xs font-bold transition ${
-                    authMode === 'register'
+                    authMode === 'register' || authMode === 'otp'
                       ? 'bg-emerald-600 text-white shadow-lg'
                       : 'bg-slate-950 text-slate-400 hover:text-white'
                   }`}
@@ -1155,9 +1227,66 @@ export default function Home() {
                     </select>
                   </div>
 
-                  <button className="md:col-span-2 mt-2 font-bold py-3 rounded-lg transition bg-emerald-600 hover:bg-emerald-500 text-white">
-                    Create Account & Register
+                  <button
+                    disabled={loadingAuth}
+                    className="md:col-span-2 mt-2 font-bold py-3 rounded-lg transition bg-emerald-600 hover:bg-emerald-500 text-white disabled:opacity-50"
+                  >
+                    {loadingAuth ? 'Sending Verification Code...' : 'Create Account & Get Code ✨'}
                   </button>
+                </form>
+              )}
+
+              {/* OTP VERIFICATION FORM */}
+              {authMode === 'otp' && (
+                <form onSubmit={handleVerifyOtp} className="space-y-4 max-w-md mx-auto text-sm">
+                  <div className="bg-emerald-950/50 border border-emerald-500/40 p-4 rounded-xl text-center">
+                    <span className="text-2xl block mb-1">📩</span>
+                    <h3 className="text-lg font-bold text-emerald-300">Enter Verification Code</h3>
+                    <p className="text-xs text-slate-300 mt-1">
+                      We sent an OTP code to <strong className="text-white font-mono">{email}</strong>. Please check your school email inbox.
+                    </p>
+                  </div>
+
+                  <div>
+                    <label className="block text-xs text-slate-300 mb-1 font-medium text-center">
+                      6-Digit Verification Code (OTP)
+                    </label>
+                    <input
+                      type="text"
+                      required
+                      maxLength={8}
+                      placeholder="e.g. 123456"
+                      value={otpCode}
+                      onChange={(e) => setOtpCode(e.target.value)}
+                      className="w-full bg-slate-950 border border-slate-700 rounded-lg p-3 text-center text-2xl font-mono tracking-widest text-white focus:outline-none focus:border-emerald-500"
+                    />
+                  </div>
+
+                  <button
+                    type="submit"
+                    disabled={loadingAuth}
+                    className="w-full font-bold py-3 rounded-lg bg-emerald-600 hover:bg-emerald-500 transition text-white text-xs disabled:opacity-50"
+                  >
+                    {loadingAuth ? 'Verifying Code...' : 'Verify Code & Complete Registration 🚀'}
+                  </button>
+
+                  <div className="flex justify-between items-center text-xs text-slate-400 pt-2">
+                    <button
+                      type="button"
+                      onClick={() => setAuthMode('register')}
+                      className="hover:text-white underline"
+                    >
+                      ← Back to Registration
+                    </button>
+                    <button
+                      type="button"
+                      onClick={handleRegister}
+                      disabled={loadingAuth}
+                      className="hover:text-emerald-400 underline"
+                    >
+                      Resend Code
+                    </button>
+                  </div>
                 </form>
               )}
             </section>
