@@ -18,6 +18,7 @@ export default function AdminPage() {
   const [players, setPlayers] = useState([]);
   const [competitions, setCompetitions] = useState([]);
   const [competitionScores, setCompetitionScores] = useState([]);
+  const [fundraising, setFundraising] = useState([]);
   const [donations, setDonations] = useState([]);
 
   // Point Management Form State
@@ -46,11 +47,20 @@ export default function AdminPage() {
   const [newTeamSport, setNewTeamSport] = useState('General');
   const [teamActionMsg, setTeamActionMsg] = useState('');
 
-  // Donation Form State
+  // Fundraising Goal (CRUD) Form State
+  const [editingFundId, setEditingFundId] = useState(null);
+  const [fundItemName, setFundItemName] = useState('');
+  const [fundTargetAmount, setFundTargetAmount] = useState('');
+  const [fundRaisedAmount, setFundRaisedAmount] = useState('0');
+  const [fundDescription, setFundDescription] = useState('');
+  const [fundActionMsg, setFundActionMsg] = useState('');
+
+  // Manual Donation Entry State
   const [donorName, setDonorName] = useState('');
   const [donationAmount, setDonationAmount] = useState('');
   const [paymentMethod, setPaymentMethod] = useState('Vodafone Cash');
   const [refNumber, setRefNumber] = useState('');
+  const [selectedFundIdForDonation, setSelectedFundIdForDonation] = useState('');
   const [donationMsg, setDonationMsg] = useState('');
 
   const router = useRouter();
@@ -106,7 +116,10 @@ export default function AdminPage() {
     const { data: scoreData } = await supabase.from('competition_scores').select('*');
     if (scoreData) setCompetitionScores(scoreData);
 
-    const { data: donationData } = await supabase.from('donations').select('*').order('created_at', { ascending: false });
+    const { data: fundData } = await supabase.from('fundraising').select('*').order('created_at', { ascending: false });
+    if (fundData) setFundraising(fundData);
+
+    const { data: donationData } = await supabase.from('donations').select('*, fundraising(item_name), profiles(full_name, email)').order('created_at', { ascending: false });
     if (donationData) setDonations(donationData);
   }
 
@@ -166,7 +179,7 @@ export default function AdminPage() {
           await supabase.from('competition_scores').insert([{ competition_id: selectedCompId, student_id: selectedPlayerId, points: newCompPts }]);
         }
 
-        // Sync to competition_participants (Main Site Table)
+        // Sync to competition_participants
         const { data: existingParticipant } = await supabase
           .from('competition_participants')
           .select('id')
@@ -326,27 +339,174 @@ export default function AdminPage() {
     else fetchAdminData();
   }
 
+  // --- FUNDRAISING GOALS CRUD HANDLERS ---
+  async function handleSaveFundraising(e) {
+    e.preventDefault();
+    setFundActionMsg('');
+
+    if (!fundItemName.trim()) return setFundActionMsg('Item name is required.');
+    if (!fundTargetAmount || parseFloat(fundTargetAmount) <= 0) return setFundActionMsg('Enter a valid target amount.');
+
+    const targetVal = parseFloat(fundTargetAmount);
+    const raisedVal = parseFloat(fundRaisedAmount) || 0;
+
+    if (editingFundId) {
+      const { error } = await supabase
+        .from('fundraising')
+        .update({
+          item_name: fundItemName.trim(),
+          target_amount: targetVal,
+          raised_amount: raisedVal,
+          description: fundDescription.trim() || null
+        })
+        .eq('id', editingFundId);
+
+      if (error) setFundActionMsg(`Error: ${error.message}`);
+      else {
+        setFundActionMsg(`Success! Campaign "${fundItemName}" updated.`);
+        resetFundForm();
+        fetchAdminData();
+      }
+    } else {
+      const { error } = await supabase
+        .from('fundraising')
+        .insert([{
+          item_name: fundItemName.trim(),
+          target_amount: targetVal,
+          raised_amount: raisedVal,
+          description: fundDescription.trim() || null
+        }]);
+
+      if (error) setFundActionMsg(`Error: ${error.message}`);
+      else {
+        setFundActionMsg(`Success! Campaign "${fundItemName}" created.`);
+        resetFundForm();
+        fetchAdminData();
+      }
+    }
+  }
+
+  function resetFundForm() {
+    setEditingFundId(null);
+    setFundItemName('');
+    setFundTargetAmount('');
+    setFundRaisedAmount('0');
+    setFundDescription('');
+  }
+
+  function startEditingFund(item) {
+    setEditingFundId(item.id);
+    setFundItemName(item.item_name || '');
+    setFundTargetAmount(item.target_amount?.toString() || '');
+    setFundRaisedAmount(item.raised_amount?.toString() || '0');
+    setFundDescription(item.description || '');
+    setFundActionMsg('');
+  }
+
+  async function handleDeleteFundraising(id, name) {
+    if (!confirm(`Are you sure you want to delete campaign "${name}"? This action cannot be undone.`)) return;
+
+    const { error } = await supabase.from('fundraising').delete().eq('id', id);
+    if (error) alert(`Failed to delete campaign: ${error.message}`);
+    else {
+      alert(`Campaign "${name}" deleted.`);
+      if (editingFundId === id) resetFundForm();
+      fetchAdminData();
+    }
+  }
+
+  async function handleQuickUpdateProgress(id, currentTarget, currentRaised, deltaAmount) {
+    const newRaised = Math.max(0, currentRaised + deltaAmount);
+    const { error } = await supabase
+      .from('fundraising')
+      .update({ raised_amount: newRaised })
+      .eq('id', id);
+
+    if (error) alert(`Update failed: ${error.message}`);
+    else fetchAdminData();
+  }
+
+  // --- MANUAL DONATION RECORDING & APPROVAL HANDLERS ---
   async function handleAddDonation(e) {
     e.preventDefault();
     setDonationMsg('');
     if (!donorName || !donationAmount) return setDonationMsg('Please fill in donor name and amount.');
 
+    const amt = parseFloat(donationAmount);
     const { error } = await supabase.from('donations').insert([{
       donor_name: donorName.trim(),
-      amount: parseFloat(donationAmount),
+      amount: amt,
       payment_method: paymentMethod,
       reference_number: refNumber.trim() || null,
+      item_id: selectedFundIdForDonation || null,
       status: 'approved'
     }]);
 
     if (error) setDonationMsg(`Error: ${error.message}`);
     else {
+      if (selectedFundIdForDonation) {
+        const item = fundraising.find(f => f.id === selectedFundIdForDonation);
+        if (item) {
+          const newRaised = (item.raised_amount || 0) + amt;
+          await supabase.from('fundraising').update({ raised_amount: newRaised }).eq('id', selectedFundIdForDonation);
+        }
+      }
       setDonationMsg(`Success! Donation recorded.`);
       setDonorName('');
       setDonationAmount('');
       setRefNumber('');
+      setSelectedFundIdForDonation('');
       fetchAdminData();
     }
+  }
+
+  async function handleApproveStudentDonation(donation, approve) {
+    if (approve) {
+      const { error: donErr } = await supabase
+        .from('donations')
+        .update({ status: 'approved' })
+        .eq('id', donation.id);
+
+      if (donErr) return alert('Error approving donation: ' + donErr.message);
+
+      if (donation.item_id) {
+        const item = fundraising.find((i) => i.id === donation.item_id);
+        const newTotal = (Number(item?.raised_amount) || 0) + Number(donation.amount);
+
+        await supabase
+          .from('fundraising')
+          .update({ raised_amount: newTotal })
+          .eq('id', donation.item_id);
+      }
+
+      if (donation.student_id) {
+        const student = players.find((s) => s.id === donation.student_id);
+        if (student) {
+          await supabase
+            .from('profiles')
+            .update({ points: (student.points || 0) + 10 })
+            .eq('id', donation.student_id);
+        }
+      }
+
+      alert('Donation approved! Progress updated and 10 points awarded.');
+    } else {
+      const { error: donErr } = await supabase
+        .from('donations')
+        .update({ status: 'rejected' })
+        .eq('id', donation.id);
+
+      if (donErr) return alert('Error rejecting donation: ' + donErr.message);
+      alert('Donation request rejected.');
+    }
+    fetchAdminData();
+  }
+
+  async function handleDeleteDonation(id) {
+    if (!confirm('Are you sure you want to delete this donation transaction record?')) return;
+    const { error } = await supabase.from('donations').delete().eq('id', id);
+    if (error) alert('Delete failed: ' + error.message);
+    else fetchAdminData();
   }
 
   const getSelectedCompLeaderboard = () => {
@@ -387,19 +547,22 @@ export default function AdminPage() {
   }
 
   const selectedComp = competitions.find(c => c.id === selectedCompId);
+  const pendingDonationRequests = donations.filter(d => d.status === 'pending');
 
   return (
     <div className="min-h-screen bg-slate-950 text-slate-100 p-6 md:p-12">
+      {/* Header */}
       <div className="max-w-6xl mx-auto flex flex-col md:flex-row justify-between items-start md:items-center mb-8 pb-6 border-b border-slate-800 gap-4">
         <div>
           <h1 className="text-3xl font-extrabold text-white tracking-tight">👑 Admin Control Center</h1>
-          <p className="text-slate-400 text-sm mt-1">Manage scores, teams, competitions, and donations.</p>
+          <p className="text-slate-400 text-sm mt-1">Manage scores, teams, competitions, equipment goals & donations.</p>
         </div>
         <a href="/" className="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-slate-200 text-sm font-semibold rounded-lg border border-slate-700 transition">
           &larr; Back to Home
         </a>
       </div>
 
+      {/* Tabs */}
       <div className="max-w-6xl mx-auto mb-8 flex flex-wrap gap-3 border-b border-slate-800 pb-4">
         <button
           onClick={() => setActiveTab('points')}
@@ -417,13 +580,18 @@ export default function AdminPage() {
           onClick={() => setActiveTab('competitions')}
           className={`px-5 py-2.5 rounded-lg text-sm font-semibold transition ${activeTab === 'competitions' ? 'bg-indigo-600 text-white' : 'bg-slate-900 text-slate-400 hover:bg-slate-800'}`}
         >
-          🏆 Competitions
+          🏆 Competitions ({competitions.length})
         </button>
         <button
           onClick={() => setActiveTab('donations')}
-          className={`px-5 py-2.5 rounded-lg text-sm font-semibold transition ${activeTab === 'donations' ? 'bg-indigo-600 text-white' : 'bg-slate-900 text-slate-400 hover:bg-slate-800'}`}
+          className={`px-5 py-2.5 rounded-lg text-sm font-semibold transition relative ${activeTab === 'donations' ? 'bg-indigo-600 text-white' : 'bg-slate-900 text-slate-400 hover:bg-slate-800'}`}
         >
-          💳 Donations
+          💰 Donations & Goals ({fundraising.length})
+          {pendingDonationRequests.length > 0 && (
+            <span className="ml-2 bg-amber-500 text-slate-950 font-black text-xxs px-2 py-0.5 rounded-full">
+              {pendingDonationRequests.length}
+            </span>
+          )}
         </button>
       </div>
 
@@ -567,7 +735,6 @@ export default function AdminPage() {
               </div>
             </div>
 
-            {/* Right Panel: Standings */}
             <div className="lg:col-span-2 bg-slate-900 border border-slate-800 rounded-xl p-6 shadow-xl">
               <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-6 gap-3 border-b border-slate-800 pb-4">
                 <div>
@@ -863,78 +1030,380 @@ export default function AdminPage() {
           </div>
         )}
 
-        {/* TAB 4: DONATIONS */}
+        {/* TAB 4: DONATIONS & EQUIPMENT FUNDRAISING GOALS (FULL CRUD) */}
         {activeTab === 'donations' && (
-          <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-            <div className="bg-slate-900 border border-slate-800 rounded-xl p-6 shadow-xl h-fit">
-              <h2 className="text-xl font-bold text-white mb-4">💳 Record Donation</h2>
-              <form onSubmit={handleAddDonation} className="space-y-4">
-                <div>
-                  <label className="block text-xs font-semibold text-slate-400 uppercase mb-1">Donor Name</label>
-                  <input
-                    type="text"
-                    required
-                    placeholder="e.g. Ahmed Ali"
-                    value={donorName}
-                    onChange={(e) => setDonorName(e.target.value)}
-                    className="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-slate-200 text-sm"
-                  />
+          <div className="space-y-8">
+            {/* PENDING APPROVAL QUEUE FOR STUDENT DONATIONS */}
+            {pendingDonationRequests.length > 0 && (
+              <div className="bg-amber-500/10 border border-amber-500/40 p-5 rounded-2xl space-y-3">
+                <h2 className="font-bold text-amber-300 text-base flex items-center gap-2">
+                  <span>📩</span> Student Donation Proofs Pending Approval ({pendingDonationRequests.length})
+                </h2>
+                <div className="overflow-x-auto">
+                  <table className="w-full text-left text-xs bg-slate-950 rounded-xl overflow-hidden border border-slate-800">
+                    <thead>
+                      <tr className="border-b border-slate-800 text-slate-400">
+                        <th className="p-3">Student</th>
+                        <th className="p-3">Target Campaign Item</th>
+                        <th className="p-3">Amount</th>
+                        <th className="p-3">Sender Phone</th>
+                        <th className="p-3">Tx ID / Ref</th>
+                        <th className="p-3 text-right">Action</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {pendingDonationRequests.map((don) => (
+                        <tr key={don.id} className="border-b border-slate-800/50">
+                          <td className="p-3 font-bold text-white">{don.profiles?.full_name || don.donor_name}</td>
+                          <td className="p-3 text-slate-300">{don.fundraising?.item_name || 'General Equipment'}</td>
+                          <td className="p-3 font-bold text-emerald-400">{don.amount} EGP</td>
+                          <td className="p-3 text-slate-300">{don.sender_phone || 'N/A'}</td>
+                          <td className="p-3 font-mono text-cyan-300">{don.transaction_id || don.reference_number || 'N/A'}</td>
+                          <td className="p-3 text-right space-x-2">
+                            <button
+                              onClick={() => handleApproveStudentDonation(don, true)}
+                              className="bg-emerald-600 hover:bg-emerald-500 text-white font-bold px-3 py-1 rounded text-xs transition"
+                            >
+                              Approve ✅
+                            </button>
+                            <button
+                              onClick={() => handleApproveStudentDonation(don, false)}
+                              className="bg-rose-600 hover:bg-rose-500 text-white font-bold px-3 py-1 rounded text-xs transition"
+                            >
+                              Reject ❌
+                            </button>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            )}
+
+            {/* SECTION 1: CREATE / EDIT FUNDRAISING GOAL CAMPAIGNS */}
+            <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+              <div className="bg-slate-900 border border-slate-800 rounded-xl p-6 shadow-xl h-fit">
+                <div className="flex justify-between items-center mb-4">
+                  <h2 className="text-xl font-bold text-white">
+                    {editingFundId ? '✏️ Edit Campaign Goal' : '📢 Create Equipment Goal'}
+                  </h2>
+                  {editingFundId && (
+                    <button
+                      onClick={resetFundForm}
+                      className="text-xs text-amber-400 hover:underline"
+                    >
+                      Cancel Edit
+                    </button>
+                  )}
                 </div>
 
-                <div>
-                  <label className="block text-xs font-semibold text-slate-400 uppercase mb-1">Amount (EGP)</label>
-                  <input
-                    type="number"
-                    required
-                    placeholder="e.g. 100"
-                    value={donationAmount}
-                    onChange={(e) => setDonationAmount(e.target.value)}
-                    className="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-slate-200 text-sm"
-                  />
+                <form onSubmit={handleSaveFundraising} className="space-y-4">
+                  <div>
+                    <label className="block text-xs font-semibold text-slate-400 uppercase mb-1">Equipment / Campaign Name</label>
+                    <input
+                      type="text"
+                      required
+                      placeholder="e.g. Volleyball Nets & Balls"
+                      value={fundItemName}
+                      onChange={(e) => setFundItemName(e.target.value)}
+                      className="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-slate-200 text-sm"
+                    />
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <label className="block text-xs font-semibold text-slate-400 uppercase mb-1">Target Goal (EGP)</label>
+                      <input
+                        type="number"
+                        required
+                        min="1"
+                        placeholder="e.g. 2000"
+                        value={fundTargetAmount}
+                        onChange={(e) => setFundTargetAmount(e.target.value)}
+                        className="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-slate-200 text-sm"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-xs font-semibold text-slate-400 uppercase mb-1">Raised So Far (EGP)</label>
+                      <input
+                        type="number"
+                        min="0"
+                        placeholder="e.g. 500"
+                        value={fundRaisedAmount}
+                        onChange={(e) => setFundRaisedAmount(e.target.value)}
+                        className="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-slate-200 text-sm"
+                      />
+                    </div>
+                  </div>
+
+                  {fundTargetAmount && (
+                    <div className="bg-slate-950 p-3 rounded-lg border border-slate-800 text-xs flex justify-between items-center">
+                      <span className="text-slate-400">Progress Remaining:</span>
+                      <span className="font-bold text-amber-400">
+                        {Math.max(0, (parseFloat(fundTargetAmount) || 0) - (parseFloat(fundRaisedAmount) || 0))} EGP left
+                      </span>
+                    </div>
+                  )}
+
+                  <div>
+                    <label className="block text-xs font-semibold text-slate-400 uppercase mb-1">Description</label>
+                    <textarea
+                      rows={3}
+                      placeholder="Explain what the sports equipment will be used for..."
+                      value={fundDescription}
+                      onChange={(e) => setFundDescription(e.target.value)}
+                      className="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-slate-200 text-sm"
+                    />
+                  </div>
+
+                  <button
+                    type="submit"
+                    className={`w-full py-2.5 font-semibold rounded-lg text-sm transition ${
+                      editingFundId ? 'bg-amber-600 hover:bg-amber-500 text-white' : 'bg-emerald-600 hover:bg-emerald-500 text-white'
+                    }`}
+                  >
+                    {editingFundId ? 'Save Campaign Changes' : '+ Publish Equipment Goal'}
+                  </button>
+
+                  {fundActionMsg && (
+                    <p className={`text-xs ${fundActionMsg.startsWith('Success') ? 'text-emerald-400' : 'text-rose-400'}`}>
+                      {fundActionMsg}
+                    </p>
+                  )}
+                </form>
+              </div>
+
+              {/* LIST OF CAMPAIGN GOALS WITH EDIT, DELETE & PROGRESS ADJUSTMENT */}
+              <div className="lg:col-span-2 bg-slate-900 border border-slate-800 rounded-xl p-6 shadow-xl">
+                <h2 className="text-xl font-bold text-white mb-4">
+                  📢 Active Equipment Campaigns ({fundraising.length})
+                </h2>
+
+                <div className="space-y-4 max-h-[500px] overflow-y-auto pr-1">
+                  {fundraising.length === 0 ? (
+                    <p className="text-xs text-slate-500">No equipment goals created yet.</p>
+                  ) : (
+                    fundraising.map((item) => {
+                      const target = item.target_amount || 0;
+                      const raised = item.raised_amount || 0;
+                      const remaining = Math.max(0, target - raised);
+                      const percent = target > 0 ? Math.min(100, Math.round((raised / target) * 100)) : 0;
+
+                      return (
+                        <div key={item.id} className="bg-slate-950 p-4 rounded-xl border border-slate-800 space-y-3">
+                          <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2">
+                            <div>
+                              <h3 className="font-bold text-white text-base">{item.item_name}</h3>
+                              <p className="text-xs text-slate-400 mt-0.5">{item.description}</p>
+                            </div>
+                            <div className="flex gap-2">
+                              <button
+                                onClick={() => startEditingFund(item)}
+                                className="px-3 py-1 bg-amber-600/30 hover:bg-amber-600 text-amber-300 hover:text-white text-xs font-bold rounded transition border border-amber-500/40"
+                              >
+                                Edit ✏️
+                              </button>
+                              <button
+                                onClick={() => handleDeleteFundraising(item.id, item.item_name)}
+                                className="px-3 py-1 bg-rose-600/30 hover:bg-rose-600 text-rose-300 hover:text-white text-xs font-bold rounded transition border border-rose-500/40"
+                              >
+                                Delete 🗑️
+                              </button>
+                            </div>
+                          </div>
+
+                          {/* Progress bar */}
+                          <div className="space-y-1">
+                            <div className="w-full bg-slate-900 h-3 rounded-full overflow-hidden border border-slate-800">
+                              <div
+                                className="bg-emerald-500 h-full transition-all duration-300"
+                                style={{ width: `${percent}%` }}
+                              />
+                            </div>
+                            <div className="flex justify-between text-xs text-slate-300 font-medium pt-1">
+                              <span>Raised: <strong className="text-emerald-400">{raised} EGP</strong></span>
+                              <span>Goal: <strong className="text-white">{target} EGP</strong> ({percent}%)</span>
+                              <span>Remaining Progress Left: <strong className="text-amber-400">{remaining} EGP</strong></span>
+                            </div>
+                          </div>
+
+                          {/* Quick Progress Modifier Buttons */}
+                          <div className="flex flex-wrap items-center gap-2 pt-2 border-t border-slate-900 text-xs">
+                            <span className="text-slate-500 font-semibold text-xxs uppercase">Quick Adjust Progress:</span>
+                            <button
+                              onClick={() => handleQuickUpdateProgress(item.id, target, raised, 50)}
+                              className="px-2 py-0.5 bg-slate-800 hover:bg-slate-700 text-emerald-300 rounded text-xxs font-bold"
+                            >
+                              +50 EGP
+                            </button>
+                            <button
+                              onClick={() => handleQuickUpdateProgress(item.id, target, raised, 100)}
+                              className="px-2 py-0.5 bg-slate-800 hover:bg-slate-700 text-emerald-300 rounded text-xxs font-bold"
+                            >
+                              +100 EGP
+                            </button>
+                            <button
+                              onClick={() => handleQuickUpdateProgress(item.id, target, raised, 500)}
+                              className="px-2 py-0.5 bg-slate-800 hover:bg-slate-700 text-emerald-300 rounded text-xxs font-bold"
+                            >
+                              +500 EGP
+                            </button>
+                            <button
+                              onClick={() => handleQuickUpdateProgress(item.id, target, raised, -50)}
+                              className="px-2 py-0.5 bg-slate-800 hover:bg-slate-700 text-rose-300 rounded text-xxs font-bold"
+                            >
+                              -50 EGP
+                            </button>
+                            <button
+                              onClick={() => handleQuickUpdateProgress(item.id, target, target, 0)}
+                              className="px-2 py-0.5 bg-emerald-900/40 border border-emerald-500/40 text-emerald-300 hover:bg-emerald-600 hover:text-white rounded text-xxs font-bold ml-auto"
+                            >
+                              Mark 100% Completed ✨
+                            </button>
+                          </div>
+                        </div>
+                      );
+                    })
+                  )}
                 </div>
-
-                <button
-                  type="submit"
-                  className="w-full py-2.5 bg-emerald-600 hover:bg-emerald-500 text-white font-semibold rounded-lg text-sm transition"
-                >
-                  Record Donation
-                </button>
-
-                {donationMsg && (
-                  <p className={`text-xs ${donationMsg.startsWith('Success') ? 'text-emerald-400' : 'text-rose-400'}`}>
-                    {donationMsg}
-                  </p>
-                )}
-              </form>
+              </div>
             </div>
 
-            <div className="lg:col-span-2 bg-slate-900 border border-slate-800 rounded-xl p-6 shadow-xl">
-              <h2 className="text-xl font-bold text-white mb-4">Donation Ledger</h2>
-              <div className="overflow-x-auto">
-                <table className="w-full text-left border-collapse">
-                  <thead>
-                    <tr className="border-b border-slate-800 text-slate-400 text-xs font-semibold uppercase">
-                      <th className="py-3 px-4">Donor</th>
-                      <th className="py-3 px-4">Amount</th>
-                      <th className="py-3 px-4">Method</th>
-                      <th className="py-3 px-4">Status</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-slate-800 text-sm">
-                    {donations.map((d) => (
-                      <tr key={d.id} className="hover:bg-slate-800/50 transition">
-                        <td className="py-3 px-4 font-medium text-white">{d.donor_name}</td>
-                        <td className="py-3 px-4 font-bold text-emerald-400">{d.amount} EGP</td>
-                        <td className="py-3 px-4 text-slate-300 text-xs">{d.payment_method}</td>
-                        <td className="py-3 px-4">
-                          <span className="px-2 py-0.5 text-xs font-semibold rounded bg-emerald-500/20 text-emerald-400">
-                            {d.status}
-                          </span>
-                        </td>
+            {/* SECTION 2: MANUAL DONATION RECORDING & COMPLETE DONATION LEDGER */}
+            <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+              <div className="bg-slate-900 border border-slate-800 rounded-xl p-6 shadow-xl h-fit">
+                <h2 className="text-xl font-bold text-white mb-4">💳 Record Manual Donation</h2>
+                <form onSubmit={handleAddDonation} className="space-y-4">
+                  <div>
+                    <label className="block text-xs font-semibold text-slate-400 uppercase mb-1">Donor Name</label>
+                    <input
+                      type="text"
+                      required
+                      placeholder="e.g. Captain Ahmed"
+                      value={donorName}
+                      onChange={(e) => setDonorName(e.target.value)}
+                      className="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-slate-200 text-sm"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-semibold text-slate-400 uppercase mb-1">Link to Campaign Goal (Optional)</label>
+                    <select
+                      value={selectedFundIdForDonation}
+                      onChange={(e) => setSelectedFundIdForDonation(e.target.value)}
+                      className="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-slate-200 text-sm"
+                    >
+                      <option value="">General Equipment Fund</option>
+                      {fundraising.map((f) => (
+                        <option key={f.id} value={f.id}>{f.item_name}</option>
+                      ))}
+                    </select>
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-semibold text-slate-400 uppercase mb-1">Amount (EGP)</label>
+                    <input
+                      type="number"
+                      required
+                      min="1"
+                      placeholder="e.g. 100"
+                      value={donationAmount}
+                      onChange={(e) => setDonationAmount(e.target.value)}
+                      className="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-slate-200 text-sm"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-semibold text-slate-400 uppercase mb-1">Payment Method</label>
+                    <select
+                      value={paymentMethod}
+                      onChange={(e) => setPaymentMethod(e.target.value)}
+                      className="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-slate-200 text-sm"
+                    >
+                      <option>Vodafone Cash</option>
+                      <option>InstaPay</option>
+                      <option>Cash</option>
+                    </select>
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-semibold text-slate-400 uppercase mb-1">Reference Number / Note</label>
+                    <input
+                      type="text"
+                      placeholder="e.g. TXN12345"
+                      value={refNumber}
+                      onChange={(e) => setRefNumber(e.target.value)}
+                      className="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-slate-200 text-sm"
+                    />
+                  </div>
+
+                  <button
+                    type="submit"
+                    className="w-full py-2.5 bg-emerald-600 hover:bg-emerald-500 text-white font-semibold rounded-lg text-sm transition"
+                  >
+                    Record & Add To Campaign
+                  </button>
+
+                  {donationMsg && (
+                    <p className={`text-xs ${donationMsg.startsWith('Success') ? 'text-emerald-400' : 'text-rose-400'}`}>
+                      {donationMsg}
+                    </p>
+                  )}
+                </form>
+              </div>
+
+              <div className="lg:col-span-2 bg-slate-900 border border-slate-800 rounded-xl p-6 shadow-xl">
+                <h2 className="text-xl font-bold text-white mb-4">📖 Complete Donation Ledger</h2>
+                <div className="overflow-x-auto">
+                  <table className="w-full text-left border-collapse">
+                    <thead>
+                      <tr className="border-b border-slate-800 text-slate-400 text-xs font-semibold uppercase">
+                        <th className="py-3 px-4">Donor / Student</th>
+                        <th className="py-3 px-4">Target Campaign</th>
+                        <th className="py-3 px-4">Amount</th>
+                        <th className="py-3 px-4">Status</th>
+                        <th className="py-3 px-4 text-right">Action</th>
                       </tr>
-                    ))}
-                  </tbody>
-                </table>
+                    </thead>
+                    <tbody className="divide-y divide-slate-800 text-sm">
+                      {donations.length === 0 ? (
+                        <tr>
+                          <td colSpan="5" className="p-4 text-center text-slate-500">No donations recorded yet.</td>
+                        </tr>
+                      ) : (
+                        donations.map((d) => (
+                          <tr key={d.id} className="hover:bg-slate-800/50 transition">
+                            <td className="py-3 px-4 font-medium text-white">
+                              {d.profiles?.full_name || d.donor_name || 'Anonymous'}
+                            </td>
+                            <td className="py-3 px-4 text-slate-300 text-xs">
+                              {d.fundraising?.item_name || 'General'}
+                            </td>
+                            <td className="py-3 px-4 font-bold text-emerald-400">{d.amount} EGP</td>
+                            <td className="py-3 px-4">
+                              <span className={`px-2 py-0.5 text-xs font-semibold rounded uppercase ${
+                                d.status === 'approved' ? 'bg-emerald-500/20 text-emerald-400' :
+                                d.status === 'rejected' ? 'bg-rose-500/20 text-rose-400' :
+                                'bg-amber-500/20 text-amber-400'
+                              }`}>
+                                {d.status || 'approved'}
+                              </span>
+                            </td>
+                            <td className="py-3 px-4 text-right">
+                              <button
+                                onClick={() => handleDeleteDonation(d.id)}
+                                className="text-rose-400 hover:text-rose-300 text-xs hover:underline"
+                              >
+                                Delete 🗑️
+                              </button>
+                            </td>
+                          </tr>
+                        ))
+                      )}
+                    </tbody>
+                  </table>
+                </div>
               </div>
             </div>
           </div>
