@@ -21,8 +21,8 @@ export default function AdminPage() {
   const [donations, setDonations] = useState([]);
 
   // Point Management Form State
-  const [pointContext, setPointContext] = useState('competition'); // 'competition' | 'overall'
-  const [pointTarget, setPointTarget] = useState('student'); // 'student' | 'team'
+  const [pointContext, setPointContext] = useState('competition');
+  const [pointTarget, setPointTarget] = useState('student');
   
   const [selectedCompId, setSelectedCompId] = useState('');
   const [selectedPlayerId, setSelectedPlayerId] = useState('');
@@ -110,7 +110,6 @@ export default function AdminPage() {
     if (donationData) setDonations(donationData);
   }
 
-  // Calculate current competition points for selected student or team
   const getCurrentCompPoints = () => {
     if (!selectedCompId) return 0;
     if (pointTarget === 'student' && selectedPlayerId) {
@@ -128,7 +127,6 @@ export default function AdminPage() {
     return 0;
   };
 
-  // Handle Point Updates
   async function handleAddPoints(e) {
     e.preventDefault();
     setPointActionMsg('');
@@ -162,14 +160,13 @@ export default function AdminPage() {
         const currentCompPts = existingScore ? (existingScore.points || 0) : 0;
         const newCompPts = currentCompPts + delta;
 
-        // 1. Update competition_scores table
         if (existingScore) {
           await supabase.from('competition_scores').update({ points: newCompPts }).eq('id', existingScore.id);
         } else {
           await supabase.from('competition_scores').insert([{ competition_id: selectedCompId, student_id: selectedPlayerId, points: newCompPts }]);
         }
 
-        // 2. ALSO Sync to competition_participants table (used on main site)
+        // Sync to competition_participants (Main Site Table)
         const { data: existingParticipant } = await supabase
           .from('competition_participants')
           .select('id')
@@ -183,7 +180,7 @@ export default function AdminPage() {
           await supabase.from('competition_participants').insert([{ competition_id: selectedCompId, student_id: selectedPlayerId, score: newCompPts }]);
         }
 
-        // 3. Update student overall total points
+        // Update overall total student points
         const player = players.find((p) => p.id === selectedPlayerId);
         const newTotal = (player?.points || 0) + delta;
         await supabase.from('profiles').update({ points: newTotal }).eq('id', selectedPlayerId);
@@ -193,7 +190,6 @@ export default function AdminPage() {
         fetchAdminData();
 
       } else {
-        // Team Target
         if (!selectedTeamId) {
           setPointActionMsg('Please select a team.');
           return;
@@ -215,7 +211,7 @@ export default function AdminPage() {
           await supabase.from('competition_scores').insert([{ competition_id: selectedCompId, team_id: selectedTeamId, points: newCompPts }]);
         }
 
-        // Sync to competition_participants table
+        // Sync to competition_participants
         const { data: existingParticipant } = await supabase
           .from('competition_participants')
           .select('id')
@@ -229,7 +225,7 @@ export default function AdminPage() {
           await supabase.from('competition_participants').insert([{ competition_id: selectedCompId, team_id: selectedTeamId, score: newCompPts }]);
         }
 
-        // Update team overall total points
+        // Update overall team points
         const team = teams.find((t) => t.id === selectedTeamId);
         const newTotal = (team?.points || 0) + delta;
         await supabase.from('teams').update({ points: newTotal }).eq('id', selectedTeamId);
@@ -240,7 +236,6 @@ export default function AdminPage() {
       }
 
     } else {
-      // Overall Total Points Only
       if (pointTarget === 'student') {
         if (!selectedPlayerId) return setPointActionMsg('Please select a student.');
         const player = players.find((p) => p.id === selectedPlayerId);
@@ -269,20 +264,18 @@ export default function AdminPage() {
     }
   }
 
-  // Clear All Points
   async function handleClearAllPoints() {
-    if (!confirm("⚠️ WARNING: Resets ALL student points, team points, and tournament scores to 0. Continue?")) return;
+    if (!confirm("⚠️ WARNING: Resets ALL student points, team points, and competition scores to 0. Continue?")) return;
 
     await supabase.from('profiles').update({ points: 0 }).neq('id', '00000000-0000-0000-0000-000000000000');
     await supabase.from('teams').update({ points: 0 }).neq('id', '00000000-0000-0000-0000-000000000000');
     await supabase.from('competition_scores').update({ points: 0 }).neq('id', '00000000-0000-0000-0000-000000000000');
     await supabase.from('competition_participants').update({ score: 0 }).neq('id', '00000000-0000-0000-0000-000000000000');
 
-    alert("✅ All points have been reset to 0 across the entire site.");
+    alert("✅ All points have been reset to 0.");
     fetchAdminData();
   }
 
-  // Create Team
   async function handleCreateTeam(e) {
     e.preventDefault();
     setTeamActionMsg('');
@@ -303,7 +296,6 @@ export default function AdminPage() {
     }
   }
 
-  // Create Competition
   async function handleCreateCompetition(e) {
     e.preventDefault();
     setCompActionMsg('');
@@ -327,7 +319,6 @@ export default function AdminPage() {
     }
   }
 
-  // Delete Competition
   async function handleDeleteCompetition(id, title) {
     if (!confirm(`Delete competition "${title}"?`)) return;
     const { error } = await supabase.from('competitions').delete().eq('id', id);
@@ -335,7 +326,6 @@ export default function AdminPage() {
     else fetchAdminData();
   }
 
-  // Submit Manual Donation Record
   async function handleAddDonation(e) {
     e.preventDefault();
     setDonationMsg('');
