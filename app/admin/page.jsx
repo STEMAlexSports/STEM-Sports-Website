@@ -134,26 +134,47 @@ export default function AdminPage() {
   }
 
   async function handleUpdateBracketMatch(matchKey, team1Id, team2Id, winnerId) {
-    const selectedComp = competitions.find(c => c.id === selectedCompIdForBracket);
+    const selectedComp = competitions.find((c) => c.id === selectedCompIdForBracket);
     const sportName = selectedComp?.sport || 'Football';
 
-    const { error } = await supabase.from('knockout_matches').upsert(
-      [
-        {
-          competition_id: selectedCompIdForBracket || null,
-          sport: sportName,
-          match_key: matchKey,
-          team1_id: team1Id || null,
-          team2_id: team2Id || null,
-          winner_id: winnerId || null,
-          updated_at: new Date().toISOString(),
-        },
-      ],
-      { onConflict: selectedCompIdForBracket ? 'competition_id, match_key' : 'sport, match_key' }
-    );
+    let query = supabase.from('knockout_matches').select('id').eq('match_key', matchKey);
+    if (selectedCompIdForBracket) {
+      query = query.eq('competition_id', selectedCompIdForBracket);
+    } else {
+      query = query.eq('sport', sportName);
+    }
 
-    if (error) alert('Error updating bracket slot: ' + error.message);
-    else fetchAdminData();
+    const { data: existingMatch } = await query.maybeSingle();
+
+    const payload = {
+      competition_id: selectedCompIdForBracket || null,
+      sport: sportName,
+      match_key: matchKey,
+      team1_id: team1Id || null,
+      team2_id: team2Id || null,
+      winner_id: winnerId || null,
+      updated_at: new Date().toISOString(),
+    };
+
+    let error;
+    if (existingMatch?.id) {
+      const { error: updateErr } = await supabase
+        .from('knockout_matches')
+        .update(payload)
+        .eq('id', existingMatch.id);
+      error = updateErr;
+    } else {
+      const { error: insertErr } = await supabase
+        .from('knockout_matches')
+        .insert([payload]);
+      error = insertErr;
+    }
+
+    if (error) {
+      alert('Error updating bracket slot: ' + error.message);
+    } else {
+      fetchAdminData();
+    }
   }
 
   async function handleAddSport(e) {
