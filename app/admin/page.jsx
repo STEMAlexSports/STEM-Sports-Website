@@ -9,21 +9,12 @@ const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBh
 
 const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
-const DEFAULT_SPORTS = [
-  { id: '1', name: 'Football', emoji: '⚽' },
-  { id: '2', name: 'Basketball', emoji: '🏀' },
-  { id: '3', name: 'Volleyball', emoji: '🏐' },
-  { id: '4', name: 'Chess', emoji: '♟️' },
-  { id: '5', name: 'E-Sports', emoji: '🎮' },
-  { id: '6', name: 'Handball', emoji: '🤾' },
-];
-
 export default function AdminPage() {
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState('brackets');
 
   // Data States
-  const [sportsList, setSportsList] = useState(DEFAULT_SPORTS);
+  const [sportsList, setSportsList] = useState([]);
   const [teams, setTeams] = useState([]);
   const [players, setPlayers] = useState([]);
   const [competitions, setCompetitions] = useState([]);
@@ -32,14 +23,12 @@ export default function AdminPage() {
   const [donations, setDonations] = useState([]);
   const [knockoutMatches, setKnockoutMatches] = useState([]);
 
-  // Sports CRUD Form State
+  // Form & Selection States
   const [newSportName, setNewSportName] = useState('');
   const [newSportEmoji, setNewSportEmoji] = useState('🏆');
+  const [selectedCompIdForBracket, setSelectedCompIdForBracket] = useState('');
 
-  // Bracket Management State
-  const [selectedBracketSport, setSelectedBracketSport] = useState('Football');
-
-  // Point Management Form State
+  // Point Management State
   const [pointContext, setPointContext] = useState('competition');
   const [pointTarget, setPointTarget] = useState('student');
   const [selectedCompId, setSelectedCompId] = useState('');
@@ -48,7 +37,6 @@ export default function AdminPage() {
   const [pointsToAdd, setPointsToAdd] = useState('');
   const [pointActionMsg, setPointActionMsg] = useState('');
 
-  // Leaderboard View State
   const [leaderboardView, setLeaderboardView] = useState('competition');
 
   // Competition Form State
@@ -64,7 +52,7 @@ export default function AdminPage() {
   const [newTeamSport, setNewTeamSport] = useState('');
   const [teamActionMsg, setTeamActionMsg] = useState('');
 
-  // Fundraising Goal Form State
+  // Fundraising State
   const [editingFundId, setEditingFundId] = useState(null);
   const [fundItemName, setFundItemName] = useState('');
   const [fundTargetAmount, setFundTargetAmount] = useState('');
@@ -72,7 +60,7 @@ export default function AdminPage() {
   const [fundDescription, setFundDescription] = useState('');
   const [fundActionMsg, setFundActionMsg] = useState('');
 
-  // Manual Donation Entry State
+  // Donations State
   const [donorName, setDonorName] = useState('');
   const [donationAmount, setDonationAmount] = useState('');
   const [paymentMethod, setPaymentMethod] = useState('Vodafone Cash');
@@ -87,20 +75,16 @@ export default function AdminPage() {
       const { data: { session }, error: sessionError } = await supabase.auth.getSession();
 
       if (sessionError || !session?.user) {
-        alert("Auth Error: You are not logged in. Please sign in on the main home page first.");
+        alert("Auth Error: You are not logged in. Please sign in on the home page first.");
         router.push('/');
         return;
       }
 
-      const { data: profile, error: profileError } = await supabase
+      const { data: profile } = await supabase
         .from('profiles')
         .select('is_admin')
         .eq('id', session.user.id)
         .maybeSingle();
-
-      if (profileError) {
-        console.warn("Profile fetch warning:", profileError.message);
-      }
 
       if (profile && profile.is_admin === false) {
         alert("Access Denied: Account does not have admin privileges.");
@@ -127,8 +111,8 @@ export default function AdminPage() {
 
     if (sportsData && sportsData.length > 0) {
       setSportsList(sportsData);
-    } else {
-      setSportsList(DEFAULT_SPORTS);
+      setCompSport((prev) => prev || sportsData[0].name);
+      setNewTeamSport((prev) => prev || sportsData[0].name);
     }
 
     if (teamsData) {
@@ -141,9 +125,10 @@ export default function AdminPage() {
       if (playersData.length > 0 && !selectedPlayerId) setSelectedPlayerId(playersData[0].id);
     }
 
-    if (compData) {
+    if (compData && compData.length > 0) {
       setCompetitions(compData);
-      if (compData.length > 0 && !selectedCompId) setSelectedCompId(compData[0].id);
+      if (!selectedCompId) setSelectedCompId(compData[0].id);
+      if (!selectedCompIdForBracket) setSelectedCompIdForBracket(compData[0].id);
     }
 
     if (scoreData) setCompetitionScores(scoreData);
@@ -152,12 +137,16 @@ export default function AdminPage() {
     if (kmData) setKnockoutMatches(kmData);
   }
 
-  // --- BRACKET MANAGEMENT HANDLER ---
+  // --- BRACKET HANDLERS ---
   async function handleUpdateBracketMatch(matchKey, team1Id, team2Id, winnerId) {
+    const selectedComp = competitions.find(c => c.id === selectedCompIdForBracket);
+    const sportName = selectedComp?.sport || 'Football';
+
     const { error } = await supabase.from('knockout_matches').upsert(
       [
         {
-          sport: selectedBracketSport,
+          competition_id: selectedCompIdForBracket || null,
+          sport: sportName,
           match_key: matchKey,
           team1_id: team1Id || null,
           team2_id: team2Id || null,
@@ -165,14 +154,11 @@ export default function AdminPage() {
           updated_at: new Date().toISOString(),
         },
       ],
-      { onConflict: 'sport, match_key' }
+      { onConflict: selectedCompIdForBracket ? 'competition_id, match_key' : 'sport, match_key' }
     );
 
-    if (error) {
-      alert('Error updating bracket slot: ' + error.message);
-    } else {
-      fetchAdminData();
-    }
+    if (error) alert('Error updating bracket slot: ' + error.message);
+    else fetchAdminData();
   }
 
   // --- SPORTS HANDLERS ---
@@ -185,9 +171,8 @@ export default function AdminPage() {
       emoji: newSportEmoji.trim() || '🏆'
     }]);
 
-    if (error) {
-      alert('Error adding sport: ' + error.message);
-    } else {
+    if (error) alert('Error adding sport: ' + error.message);
+    else {
       setNewSportName('');
       setNewSportEmoji('🏆');
       fetchAdminData();
@@ -195,7 +180,7 @@ export default function AdminPage() {
   }
 
   async function handleDeleteSport(id, name) {
-    if (!confirm(`Are you sure you want to delete "${name}" from sports?`)) return;
+    if (!confirm(`Delete "${name}" from sports?`)) return;
     const { error } = await supabase.from('sports').delete().eq('id', id);
     if (error) alert('Delete failed: ' + error.message);
     else fetchAdminData();
@@ -205,15 +190,11 @@ export default function AdminPage() {
   const getCurrentCompPoints = () => {
     if (!selectedCompId) return 0;
     if (pointTarget === 'student' && selectedPlayerId) {
-      const match = competitionScores.find(
-        (s) => s.competition_id === selectedCompId && s.student_id === selectedPlayerId
-      );
+      const match = competitionScores.find((s) => s.competition_id === selectedCompId && s.student_id === selectedPlayerId);
       return match ? match.points || 0 : 0;
     }
     if (pointTarget === 'team' && selectedTeamId) {
-      const match = competitionScores.find(
-        (s) => s.competition_id === selectedCompId && s.team_id === selectedTeamId
-      );
+      const match = competitionScores.find((s) => s.competition_id === selectedCompId && s.team_id === selectedTeamId);
       return match ? match.points || 0 : 0;
     }
     return 0;
@@ -222,11 +203,7 @@ export default function AdminPage() {
   async function handleAddPoints(e) {
     e.preventDefault();
     setPointActionMsg('');
-
-    if (!pointsToAdd) {
-      setPointActionMsg('Please enter a point value.');
-      return;
-    }
+    if (!pointsToAdd) return setPointActionMsg('Please enter a point value.');
 
     const delta = parseInt(pointsToAdd, 10);
 
@@ -291,37 +268,27 @@ export default function AdminPage() {
         if (!selectedPlayerId) return setPointActionMsg('Please select a student.');
         const player = players.find((p) => p.id === selectedPlayerId);
         const newTotal = (player?.points || 0) + delta;
-
-        const { error } = await supabase.from('profiles').update({ points: newTotal }).eq('id', selectedPlayerId);
-        if (error) setPointActionMsg(`Error: ${error.message}`);
-        else {
-          setPointActionMsg(`Success! Student total updated to ${newTotal}.`);
-          setPointsToAdd('');
-          fetchAdminData();
-        }
+        await supabase.from('profiles').update({ points: newTotal }).eq('id', selectedPlayerId);
+        setPointActionMsg(`Success! Student total updated to ${newTotal}.`);
+        setPointsToAdd('');
+        fetchAdminData();
       } else {
         if (!selectedTeamId) return setPointActionMsg('Please select a team.');
         const team = teams.find((t) => t.id === selectedTeamId);
         const newTotal = (team?.points || 0) + delta;
-
-        const { error } = await supabase.from('teams').update({ points: newTotal }).eq('id', selectedTeamId);
-        if (error) setPointActionMsg(`Error: ${error.message}`);
-        else {
-          setPointActionMsg(`Success! Team total updated to ${newTotal}.`);
-          setPointsToAdd('');
-          fetchAdminData();
-        }
+        await supabase.from('teams').update({ points: newTotal }).eq('id', selectedTeamId);
+        setPointActionMsg(`Success! Team total updated to ${newTotal}.`);
+        setPointsToAdd('');
+        fetchAdminData();
       }
     }
   }
 
   async function handleClearAllPoints() {
     if (!confirm("⚠️ RESET WARNING: Clear ALL student, team, and tournament points to 0?")) return;
-
     await supabase.from('profiles').update({ points: 0 }).neq('id', '00000000-0000-0000-0000-000000000000');
     await supabase.from('teams').update({ points: 0 }).neq('id', '00000000-0000-0000-0000-000000000000');
     await supabase.from('competition_scores').update({ points: 0 }).neq('id', '00000000-0000-0000-0000-000000000000');
-
     alert("✅ All system points reset to 0.");
     fetchAdminData();
   }
@@ -366,16 +333,14 @@ export default function AdminPage() {
       setCompActionMsg(`Success! Competition "${compName}" created.`);
       setCompName('');
       setCompDescription('');
-      setCompDate('');
       fetchAdminData();
     }
   }
 
   async function handleDeleteCompetition(id, title) {
     if (!confirm(`Delete competition "${title}"?`)) return;
-    const { error } = await supabase.from('competitions').delete().eq('id', id);
-    if (error) alert(`Failed to delete: ${error.message}`);
-    else fetchAdminData();
+    await supabase.from('competitions').delete().eq('id', id);
+    fetchAdminData();
   }
 
   // --- FUNDRAISING HANDLERS ---
@@ -384,45 +349,27 @@ export default function AdminPage() {
     setFundActionMsg('');
 
     if (!fundItemName.trim()) return setFundActionMsg('Item name is required.');
-    if (!fundTargetAmount || parseFloat(fundTargetAmount) <= 0) return setFundActionMsg('Enter a valid target amount.');
-
-    const targetVal = parseFloat(fundTargetAmount);
+    const targetVal = parseFloat(fundTargetAmount) || 0;
     const raisedVal = parseFloat(fundRaisedAmount) || 0;
 
     if (editingFundId) {
-      const { error } = await supabase
-        .from('fundraising')
-        .update({
-          item_name: fundItemName.trim(),
-          target_amount: targetVal,
-          raised_amount: raisedVal,
-          description: fundDescription.trim() || null
-        })
-        .eq('id', editingFundId);
-
-      if (error) setFundActionMsg(`Error: ${error.message}`);
-      else {
-        setFundActionMsg(`Success! Campaign "${fundItemName}" updated.`);
-        resetFundForm();
-        fetchAdminData();
-      }
+      await supabase.from('fundraising').update({
+        item_name: fundItemName.trim(),
+        target_amount: targetVal,
+        raised_amount: raisedVal,
+        description: fundDescription.trim() || null
+      }).eq('id', editingFundId);
     } else {
-      const { error } = await supabase
-        .from('fundraising')
-        .insert([{
-          item_name: fundItemName.trim(),
-          target_amount: targetVal,
-          raised_amount: raisedVal,
-          description: fundDescription.trim() || null
-        }]);
-
-      if (error) setFundActionMsg(`Error: ${error.message}`);
-      else {
-        setFundActionMsg(`Success! Campaign "${fundItemName}" created.`);
-        resetFundForm();
-        fetchAdminData();
-      }
+      await supabase.from('fundraising').insert([{
+        item_name: fundItemName.trim(),
+        target_amount: targetVal,
+        raised_amount: raisedVal,
+        description: fundDescription.trim() || null
+      }]);
     }
+
+    resetFundForm();
+    fetchAdminData();
   }
 
   function resetFundForm() {
@@ -435,13 +382,8 @@ export default function AdminPage() {
 
   async function handleDeleteFundraising(id, name) {
     if (!confirm(`Delete campaign "${name}"?`)) return;
-
-    const { error } = await supabase.from('fundraising').delete().eq('id', id);
-    if (error) alert(`Failed to delete: ${error.message}`);
-    else {
-      if (editingFundId === id) resetFundForm();
-      fetchAdminData();
-    }
+    await supabase.from('fundraising').delete().eq('id', id);
+    fetchAdminData();
   }
 
   // --- DONATIONS HANDLERS ---
@@ -451,7 +393,7 @@ export default function AdminPage() {
     if (!donorName || !donationAmount) return setDonationMsg('Please fill in donor name and amount.');
 
     const amt = parseFloat(donationAmount);
-    const { error } = await supabase.from('donations').insert([{
+    await supabase.from('donations').insert([{
       donor_name: donorName.trim(),
       amount: amt,
       payment_method: paymentMethod,
@@ -460,71 +402,37 @@ export default function AdminPage() {
       status: 'approved'
     }]);
 
-    if (error) setDonationMsg(`Error: ${error.message}`);
-    else {
-      if (selectedFundIdForDonation) {
-        const item = fundraising.find(f => f.id === selectedFundIdForDonation);
-        if (item) {
-          const newRaised = (item.raised_amount || 0) + amt;
-          await supabase.from('fundraising').update({ raised_amount: newRaised }).eq('id', selectedFundIdForDonation);
-        }
+    if (selectedFundIdForDonation) {
+      const item = fundraising.find(f => f.id === selectedFundIdForDonation);
+      if (item) {
+        await supabase.from('fundraising').update({ raised_amount: (item.raised_amount || 0) + amt }).eq('id', selectedFundIdForDonation);
       }
-      setDonationMsg(`Success! Donation recorded.`);
-      setDonorName('');
-      setDonationAmount('');
-      setRefNumber('');
-      setSelectedFundIdForDonation('');
-      fetchAdminData();
     }
+
+    setDonorName('');
+    setDonationAmount('');
+    setRefNumber('');
+    setSelectedFundIdForDonation('');
+    fetchAdminData();
   }
 
   async function handleApproveStudentDonation(donation, approve) {
     if (approve) {
-      const { error: donErr } = await supabase
-        .from('donations')
-        .update({ status: 'approved' })
-        .eq('id', donation.id);
-
-      if (donErr) return alert('Error approving donation: ' + donErr.message);
-
+      await supabase.from('donations').update({ status: 'approved' }).eq('id', donation.id);
       if (donation.item_id) {
         const item = fundraising.find((i) => i.id === donation.item_id);
-        const newTotal = (Number(item?.raised_amount) || 0) + Number(donation.amount);
-
-        await supabase
-          .from('fundraising')
-          .update({ raised_amount: newTotal })
-          .eq('id', donation.item_id);
+        await supabase.from('fundraising').update({ raised_amount: (item?.raised_amount || 0) + Number(donation.amount) }).eq('id', donation.item_id);
       }
-
-      if (donation.student_id) {
-        const student = players.find((s) => s.id === donation.student_id);
-        if (student) {
-          await supabase
-            .from('profiles')
-            .update({ points: (student.points || 0) + 10 })
-            .eq('id', donation.student_id);
-        }
-      }
-
-      alert('Donation approved successfully!');
     } else {
-      const { error: donErr } = await supabase
-        .from('donations')
-        .update({ status: 'rejected' })
-        .eq('id', donation.id);
-
-      if (donErr) return alert('Error rejecting donation: ' + donErr.message);
-      alert('Donation request rejected.');
+      await supabase.from('donations').update({ status: 'rejected' }).eq('id', donation.id);
     }
     fetchAdminData();
   }
 
   async function handleDeleteDonation(id) {
-    if (!confirm('Delete this donation record?')) return;
-    const { error } = await supabase.from('donations').delete().eq('id', id);
-    if (error) alert('Delete failed: ' + error.message);
-    else fetchAdminData();
+    if (!confirm('Delete donation record?')) return;
+    await supabase.from('donations').delete().eq('id', id);
+    fetchAdminData();
   }
 
   const getSelectedCompLeaderboard = () => {
@@ -564,9 +472,7 @@ export default function AdminPage() {
     );
   }
 
-  const selectedComp = competitions.find(c => c.id === selectedCompId);
-  const pendingDonationRequests = donations.filter(d => d.status === 'pending');
-
+  const activeBracketComp = competitions.find(c => c.id === selectedCompIdForBracket);
   const BRACKET_MATCH_KEYS = [
     { key: 'QF1', label: 'Quarterfinal 1 (Left)' },
     { key: 'QF2', label: 'Quarterfinal 2 (Left)' },
@@ -579,11 +485,10 @@ export default function AdminPage() {
 
   return (
     <div className="min-h-screen bg-slate-950 text-slate-100 p-6 md:p-12">
-      {/* Header */}
       <div className="max-w-6xl mx-auto flex flex-col md:flex-row justify-between items-start md:items-center mb-8 pb-6 border-b border-slate-800 gap-4">
         <div>
           <h1 className="text-3xl font-extrabold text-white tracking-tight">👑 Admin Control Center</h1>
-          <p className="text-slate-400 text-sm mt-1">Manage knockout brackets, teams, scores, equipment goals & donations.</p>
+          <p className="text-slate-400 text-sm mt-1">Manage competitions, knockout brackets, teams, scores & donations.</p>
         </div>
         <div className="flex gap-2">
           <a href="/knockout" className="px-4 py-2 bg-amber-500 hover:bg-amber-400 text-slate-950 text-sm font-black rounded-xl transition shadow-lg">
@@ -595,7 +500,7 @@ export default function AdminPage() {
         </div>
       </div>
 
-      {/* Admin Navigation Tabs - Knockout Brackets Tab is FIRST on the far LEFT */}
+      {/* Admin Tabs */}
       <div className="max-w-6xl mx-auto mb-8 flex flex-wrap gap-3 border-b border-slate-800 pb-4">
         <button
           onClick={() => setActiveTab('brackets')}
@@ -623,49 +528,52 @@ export default function AdminPage() {
         </button>
         <button
           onClick={() => setActiveTab('donations')}
-          className={`px-5 py-2.5 rounded-xl text-sm font-bold transition relative ${activeTab === 'donations' ? 'bg-indigo-600 text-white shadow-lg' : 'bg-slate-900 text-slate-400 hover:bg-slate-800'}`}
+          className={`px-5 py-2.5 rounded-xl text-sm font-bold transition ${activeTab === 'donations' ? 'bg-indigo-600 text-white shadow-lg' : 'bg-slate-900 text-slate-400 hover:bg-slate-800'}`}
         >
           💰 Donations & Goals ({fundraising.length})
-          {pendingDonationRequests.length > 0 && (
-            <span className="ml-2 bg-amber-500 text-slate-950 font-black text-xxs px-2 py-0.5 rounded-full">
-              {pendingDonationRequests.length}
-            </span>
-          )}
         </button>
       </div>
 
       <div className="max-w-6xl mx-auto">
-        {/* TAB 1: KNOCKOUT BRACKET CONTROLLER */}
+        {/* TAB 1: KNOCKOUT BRACKET CONTROLLER BY COMPETITION */}
         {activeTab === 'brackets' && (
           <div className="space-y-6">
             <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center bg-slate-900 p-5 rounded-2xl border border-slate-800 gap-4">
               <div>
                 <h2 className="text-xl font-bold text-white flex items-center gap-2">
-                  <span>🥊</span> 8-Team Knockout Bracket Controller
+                  <span>🥊</span> Tournament Bracket Controller
                 </h2>
-                <p className="text-xs text-slate-400 mt-0.5">Select a sport to set quarterfinal matchups and declare round winners live.</p>
+                <p className="text-xs text-slate-400 mt-0.5">Select a Competition to set matchups and declare round winners.</p>
               </div>
 
               <div className="flex items-center gap-2">
-                <span className="text-xs font-bold text-slate-400 uppercase">Select Sport:</span>
+                <span className="text-xs font-bold text-slate-400 uppercase">Select Competition:</span>
                 <select
-                  value={selectedBracketSport}
-                  onChange={(e) => setSelectedBracketSport(e.target.value)}
+                  value={selectedCompIdForBracket}
+                  onChange={(e) => setSelectedCompIdForBracket(e.target.value)}
                   className="bg-slate-950 border border-slate-700 text-sm font-bold text-amber-300 rounded-xl p-2.5 focus:outline-none"
                 >
-                  {sportsList.map((s) => (
-                    <option key={s.id} value={s.name}>
-                      {s.emoji} {s.name}
+                  {competitions.length === 0 && <option value="">No competitions created yet</option>}
+                  {competitions.map((c) => (
+                    <option key={c.id} value={c.id}>
+                      🏆 {c.title} ({c.sport})
                     </option>
                   ))}
                 </select>
               </div>
             </div>
 
+            {activeBracketComp && (
+              <div className="bg-amber-500/10 border border-amber-500/30 p-3 rounded-xl text-xs text-amber-200 flex justify-between items-center">
+                <span>Currently Managing Bracket for: <strong>{activeBracketComp.title}</strong></span>
+                <span className="bg-amber-500/20 px-2 py-0.5 rounded font-bold text-amber-300">Sport: {activeBracketComp.sport}</span>
+              </div>
+            )}
+
             <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
               {BRACKET_MATCH_KEYS.map(({ key, label }) => {
                 const match = knockoutMatches.find(
-                  (m) => m.sport === selectedBracketSport && m.match_key === key
+                  (m) => (selectedCompIdForBracket ? m.competition_id === selectedCompIdForBracket : m.sport === activeBracketComp?.sport) && m.match_key === key
                 ) || {};
 
                 return (
@@ -879,7 +787,7 @@ export default function AdminPage() {
               <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-6 gap-3 border-b border-slate-800 pb-4">
                 <h2 className="text-xl font-bold text-white">
                   {leaderboardView === 'competition' 
-                    ? `Competition Standings: ${selectedComp?.title || 'Selected Event'}`
+                    ? `Competition Standings`
                     : leaderboardView === 'overall_students' ? 'Overall Student Standings' : 'Overall Team Standings'}
                 </h2>
 
@@ -1212,53 +1120,6 @@ export default function AdminPage() {
         {/* TAB 5: DONATIONS & EQUIPMENT FUNDRAISING GOALS */}
         {activeTab === 'donations' && (
           <div className="space-y-8">
-            {pendingDonationRequests.length > 0 && (
-              <div className="bg-amber-500/10 border border-amber-500/40 p-5 rounded-2xl space-y-3">
-                <h2 className="font-bold text-amber-300 text-base flex items-center gap-2">
-                  <span>📩</span> Student Donation Proofs Pending Approval ({pendingDonationRequests.length})
-                </h2>
-                <div className="overflow-x-auto">
-                  <table className="w-full text-left text-xs bg-slate-950 rounded-xl overflow-hidden border border-slate-800">
-                    <thead>
-                      <tr className="border-b border-slate-800 text-slate-400">
-                        <th className="p-3">Student</th>
-                        <th className="p-3">Target Item</th>
-                        <th className="p-3">Amount</th>
-                        <th className="p-3">Sender Phone</th>
-                        <th className="p-3">Tx ID / Ref</th>
-                        <th className="p-3 text-right">Action</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {pendingDonationRequests.map((don) => (
-                        <tr key={don.id} className="border-b border-slate-800/50">
-                          <td className="p-3 font-bold text-white">{don.profiles?.full_name || don.donor_name}</td>
-                          <td className="p-3 text-slate-300">{don.fundraising?.item_name || 'General Equipment'}</td>
-                          <td className="p-3 font-bold text-emerald-400">{don.amount} EGP</td>
-                          <td className="p-3 text-slate-300">{don.sender_phone || 'N/A'}</td>
-                          <td className="p-3 font-mono text-cyan-300">{don.transaction_id || don.reference_number || 'N/A'}</td>
-                          <td className="p-3 text-right space-x-2">
-                            <button
-                              onClick={() => handleApproveStudentDonation(don, true)}
-                              className="bg-emerald-600 hover:bg-emerald-500 text-white font-bold px-3 py-1 rounded text-xs transition"
-                            >
-                              Approve ✅
-                            </button>
-                            <button
-                              onClick={() => handleApproveStudentDonation(don, false)}
-                              className="bg-rose-600 hover:bg-rose-500 text-white font-bold px-3 py-1 rounded text-xs transition"
-                            >
-                              Reject ❌
-                            </button>
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              </div>
-            )}
-
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
               <div className="bg-slate-900 border border-slate-800 rounded-xl p-6 shadow-xl h-fit">
                 <div className="flex justify-between items-center mb-4">
@@ -1266,10 +1127,7 @@ export default function AdminPage() {
                     {editingFundId ? '✏️ Edit Campaign Goal' : '📢 Create Equipment Goal'}
                   </h2>
                   {editingFundId && (
-                    <button
-                      onClick={resetFundForm}
-                      className="text-xs text-amber-400 hover:underline"
-                    >
+                    <button onClick={resetFundForm} className="text-xs text-amber-400 hover:underline">
                       Cancel Edit
                     </button>
                   )}
@@ -1327,9 +1185,7 @@ export default function AdminPage() {
 
                   <button
                     type="submit"
-                    className={`w-full py-2.5 font-semibold rounded-lg text-sm transition ${
-                      editingFundId ? 'bg-amber-600 hover:bg-amber-500 text-white' : 'bg-emerald-600 hover:bg-emerald-500 text-white'
-                    }`}
+                    className="w-full py-2.5 bg-emerald-600 hover:bg-emerald-500 text-white font-semibold rounded-lg text-sm transition"
                   >
                     {editingFundId ? 'Save Campaign Changes' : '+ Publish Equipment Goal'}
                   </button>
@@ -1381,10 +1237,7 @@ export default function AdminPage() {
 
                           <div className="space-y-1">
                             <div className="w-full bg-slate-900 h-3 rounded-full overflow-hidden border border-slate-800">
-                              <div
-                                className="bg-emerald-500 h-full transition-all duration-300"
-                                style={{ width: `${percent}%` }}
-                              />
+                              <div className="bg-emerald-500 h-full transition-all duration-300" style={{ width: `${percent}%` }} />
                             </div>
                             <div className="flex justify-between text-xs text-slate-300 font-medium pt-1">
                               <span>Raised: <strong className="text-emerald-400">{raised} EGP</strong></span>
@@ -1395,142 +1248,6 @@ export default function AdminPage() {
                       );
                     })
                   )}
-                </div>
-              </div>
-            </div>
-
-            <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-              <div className="bg-slate-900 border border-slate-800 rounded-xl p-6 shadow-xl h-fit">
-                <h2 className="text-xl font-bold text-white mb-4">💳 Record Manual Donation</h2>
-                <form onSubmit={handleAddDonation} className="space-y-4">
-                  <div>
-                    <label className="block text-xs font-semibold text-slate-400 uppercase mb-1">Donor Name</label>
-                    <input
-                      type="text"
-                      required
-                      placeholder="e.g. Captain Ahmed"
-                      value={donorName}
-                      onChange={(e) => setDonorName(e.target.value)}
-                      className="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-slate-200 text-sm"
-                    />
-                  </div>
-
-                  <div>
-                    <label className="block text-xs font-semibold text-slate-400 uppercase mb-1">Link to Goal (Optional)</label>
-                    <select
-                      value={selectedFundIdForDonation}
-                      onChange={(e) => setSelectedFundIdForDonation(e.target.value)}
-                      className="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-slate-200 text-sm"
-                    >
-                      <option value="">General Equipment Fund</option>
-                      {fundraising.map((f) => (
-                        <option key={f.id} value={f.id}>{f.item_name}</option>
-                      ))}
-                    </select>
-                  </div>
-
-                  <div>
-                    <label className="block text-xs font-semibold text-slate-400 uppercase mb-1">Amount (EGP)</label>
-                    <input
-                      type="number"
-                      required
-                      min="1"
-                      placeholder="e.g. 100"
-                      value={donationAmount}
-                      onChange={(e) => setDonationAmount(e.target.value)}
-                      className="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-slate-200 text-sm"
-                    />
-                  </div>
-
-                  <div>
-                    <label className="block text-xs font-semibold text-slate-400 uppercase mb-1">Payment Method</label>
-                    <select
-                      value={paymentMethod}
-                      onChange={(e) => setPaymentMethod(e.target.value)}
-                      className="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-slate-200 text-sm"
-                    >
-                      <option>Vodafone Cash</option>
-                      <option>InstaPay</option>
-                      <option>Cash</option>
-                    </select>
-                  </div>
-
-                  <div>
-                    <label className="block text-xs font-semibold text-slate-400 uppercase mb-1">Reference Number / Note</label>
-                    <input
-                      type="text"
-                      placeholder="e.g. TXN12345"
-                      value={refNumber}
-                      onChange={(e) => setRefNumber(e.target.value)}
-                      className="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-slate-200 text-sm"
-                    />
-                  </div>
-
-                  <button
-                    type="submit"
-                    className="w-full py-2.5 bg-emerald-600 hover:bg-emerald-500 text-white font-semibold rounded-lg text-sm transition"
-                  >
-                    Record & Add To Campaign
-                  </button>
-
-                  {donationMsg && (
-                    <p className={`text-xs ${donationMsg.startsWith('Success') ? 'text-emerald-400' : 'text-rose-400'}`}>
-                      {donationMsg}
-                    </p>
-                  )}
-                </form>
-              </div>
-
-              <div className="lg:col-span-2 bg-slate-900 border border-slate-800 rounded-xl p-6 shadow-xl">
-                <h2 className="text-xl font-bold text-white mb-4">📖 Complete Donation Ledger</h2>
-                <div className="overflow-x-auto">
-                  <table className="w-full text-left border-collapse">
-                    <thead>
-                      <tr className="border-b border-slate-800 text-slate-400 text-xs font-semibold uppercase">
-                        <th className="py-3 px-4">Donor / Student</th>
-                        <th className="py-3 px-4">Target Campaign</th>
-                        <th className="py-3 px-4">Amount</th>
-                        <th className="py-3 px-4">Status</th>
-                        <th className="py-3 px-4 text-right">Action</th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-slate-800 text-sm">
-                      {donations.length === 0 ? (
-                        <tr>
-                          <td colSpan="5" className="p-4 text-center text-slate-500">No donations recorded yet.</td>
-                        </tr>
-                      ) : (
-                        donations.map((d) => (
-                          <tr key={d.id} className="hover:bg-slate-800/50 transition">
-                            <td className="py-3 px-4 font-medium text-white">
-                              {d.profiles?.full_name || d.donor_name || 'Anonymous'}
-                            </td>
-                            <td className="py-3 px-4 text-slate-300 text-xs">
-                              {d.fundraising?.item_name || 'General'}
-                            </td>
-                            <td className="py-3 px-4 font-bold text-emerald-400">{d.amount} EGP</td>
-                            <td className="py-3 px-4">
-                              <span className={`px-2 py-0.5 text-xs font-semibold rounded uppercase ${
-                                d.status === 'approved' ? 'bg-emerald-500/20 text-emerald-400' :
-                                d.status === 'rejected' ? 'bg-rose-500/20 text-rose-400' :
-                                'bg-amber-500/20 text-amber-400'
-                              }`}>
-                                {d.status || 'approved'}
-                              </span>
-                            </td>
-                            <td className="py-3 px-4 text-right">
-                              <button
-                                onClick={() => handleDeleteDonation(d.id)}
-                                className="text-rose-400 hover:text-rose-300 text-xs hover:underline"
-                              >
-                                Delete 🗑️
-                              </button>
-                            </td>
-                          </tr>
-                        ))
-                      )}
-                    </tbody>
-                  </table>
                 </div>
               </div>
             </div>
