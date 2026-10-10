@@ -16,7 +16,6 @@ const SPORT_CONFIGS = {
     cardBg: 'bg-emerald-950/40 border-emerald-500/30',
     accentText: 'text-emerald-400',
     musicUrl: 'https://cdn.pixabay.com/download/audio/2022/05/27/audio_1808fbf07a.mp3?filename=stadium-rock-113884.mp3',
-    musicTitle: '⚽ Football Stadium Anthem'
   },
   Basketball: {
     emoji: '🏀',
@@ -24,7 +23,6 @@ const SPORT_CONFIGS = {
     cardBg: 'bg-orange-950/40 border-orange-500/30',
     accentText: 'text-orange-400',
     musicUrl: 'https://cdn.pixabay.com/download/audio/2022/01/18/audio_d0a13f69d2.mp3?filename=action-hip-hop-10903.mp3',
-    musicTitle: '🏀 Court Hip-Hop Beat'
   },
   Volleyball: {
     emoji: '🏐',
@@ -32,7 +30,6 @@ const SPORT_CONFIGS = {
     cardBg: 'bg-cyan-950/40 border-cyan-500/30',
     accentText: 'text-cyan-400',
     musicUrl: 'https://cdn.pixabay.com/download/audio/2022/03/15/audio_c8c8a1e3b1.mp3?filename=summer-beach-vibes-11883.mp3',
-    musicTitle: '🏐 Arena Groove'
   },
   Chess: {
     emoji: '♟️',
@@ -40,7 +37,6 @@ const SPORT_CONFIGS = {
     cardBg: 'bg-amber-950/40 border-amber-500/30',
     accentText: 'text-amber-300',
     musicUrl: 'https://cdn.pixabay.com/download/audio/2022/10/14/audio_99391d8481.mp3?filename=orchestral-epic-dark-124976.mp3',
-    musicTitle: '♟️ Orchestral Strategy Theme'
   },
   'E-Sports': {
     emoji: '🎮',
@@ -48,7 +44,6 @@ const SPORT_CONFIGS = {
     cardBg: 'bg-purple-950/40 border-purple-500/30',
     accentText: 'text-fuchsia-400',
     musicUrl: 'https://cdn.pixabay.com/download/audio/2022/03/10/audio_55a297e59b.mp3?filename=cyberpunk-2099-10701.mp3',
-    musicTitle: '🎮 Cyberpunk Synthwave'
   },
   Handball: {
     emoji: '🤾',
@@ -56,7 +51,6 @@ const SPORT_CONFIGS = {
     cardBg: 'bg-rose-950/40 border-rose-500/30',
     accentText: 'text-rose-400',
     musicUrl: 'https://cdn.pixabay.com/download/audio/2022/05/16/audio_db6539bfb1.mp3?filename=energetic-rock-112839.mp3',
-    musicTitle: '🤾 High-Octane Arena Rock'
   }
 };
 
@@ -66,13 +60,13 @@ const DEFAULT_CONFIG = {
   cardBg: 'bg-slate-900/80 border-slate-800',
   accentText: 'text-cyan-400',
   musicUrl: 'https://cdn.pixabay.com/download/audio/2022/05/27/audio_1808fbf07a.mp3?filename=stadium-rock-113884.mp3',
-  musicTitle: '🏆 Tournament Anthem'
 };
 
 export default function KnockoutPage() {
   const [competitions, setCompetitions] = useState([]);
   const [selectedCompId, setSelectedCompId] = useState('');
   const [teams, setTeams] = useState([]);
+  const [players, setPlayers] = useState([]);
   const [knockoutMatches, setKnockoutMatches] = useState([]);
 
   const [isPlaying, setIsPlaying] = useState(false);
@@ -110,6 +104,7 @@ export default function KnockoutPage() {
   async function fetchData() {
     const { data: compData } = await supabase.from('competitions').select('*').order('created_at', { ascending: false });
     const { data: teamsData } = await supabase.from('teams').select('*');
+    const { data: playersData } = await supabase.from('profiles').select('*');
     const { data: kmData } = await supabase.from('knockout_matches').select('*');
 
     if (compData && compData.length > 0) {
@@ -117,6 +112,7 @@ export default function KnockoutPage() {
       if (!selectedCompId) setSelectedCompId(compData[0].id);
     }
     if (teamsData) setTeams(teamsData);
+    if (playersData) setPlayers(playersData);
     if (kmData) setKnockoutMatches(kmData);
   }
 
@@ -126,7 +122,7 @@ export default function KnockoutPage() {
       audioRef.current.pause();
       setIsPlaying(false);
     } else {
-      audioRef.current.play().then(() => setIsPlaying(true)).catch((err) => console.log('Audio playback error:', err));
+      audioRef.current.play().then(() => setIsPlaying(true)).catch((err) => console.log('Audio error:', err));
     }
   };
 
@@ -143,8 +139,8 @@ export default function KnockoutPage() {
     ) || {};
   };
 
-  const renderTeamSlot = (teamId, winnerId) => {
-    if (!teamId) {
+  const renderTeamSlot = (participantId, winnerId) => {
+    if (!participantId) {
       return (
         <div className="p-2.5 bg-slate-950/80 border border-slate-800/80 rounded-xl text-center text-slate-600 text-xs italic">
           TBD
@@ -152,9 +148,14 @@ export default function KnockoutPage() {
       );
     }
 
-    const team = teams.find((t) => t.id === teamId);
-    const isWinner = winnerId === teamId;
-    const isLoser = winnerId && winnerId !== teamId;
+    const team = teams.find((t) => t.id === participantId);
+    const player = !team ? players.find((p) => p.id === participantId) : null;
+
+    const displayName = team ? (team.team_name || team.name) : player ? player.full_name : 'Unknown';
+    const logoOrAvatar = team ? team.logo_url : '👤';
+
+    const isWinner = winnerId === participantId;
+    const isLoser = winnerId && winnerId !== participantId;
 
     return (
       <div
@@ -167,15 +168,13 @@ export default function KnockoutPage() {
         }`}
       >
         <div className="flex items-center gap-2 overflow-hidden">
-          {team?.logo_url && (
-            team.logo_url.startsWith('http') ? (
-              <img src={team.logo_url} alt="" className="w-6 h-6 rounded-full object-cover border border-slate-700 flex-shrink-0" />
-            ) : (
-              <span className="text-base flex-shrink-0">{team.logo_url}</span>
-            )
+          {logoOrAvatar && logoOrAvatar.startsWith('http') ? (
+            <img src={logoOrAvatar} alt="" className="w-6 h-6 rounded-full object-cover border border-slate-700 flex-shrink-0" />
+          ) : (
+            <span className="text-base flex-shrink-0">{logoOrAvatar || '🛡️'}</span>
           )}
           <span className={`font-bold text-xs truncate ${isWinner ? 'text-emerald-300 font-black' : isLoser ? 'text-slate-500 line-through' : 'text-slate-100'}`}>
-            {team?.team_name || team?.name || 'Unknown'}
+            {displayName}
           </span>
         </div>
 
@@ -205,6 +204,9 @@ export default function KnockoutPage() {
 
   const finalMatch = getMatch('FINAL');
   const championTeam = teams.find((t) => t.id === finalMatch.winner_id);
+  const championPlayer = !championTeam ? players.find((p) => p.id === finalMatch.winner_id) : null;
+  const champName = championTeam ? (championTeam.team_name || championTeam.name) : championPlayer?.full_name;
+  const champLogo = championTeam ? championTeam.logo_url : '👤';
 
   return (
     <div className={`min-h-screen bg-gradient-to-b ${sportConfig.theme} text-slate-100 p-4 md:p-8 space-y-8 transition-colors duration-700`}>
@@ -220,8 +222,7 @@ export default function KnockoutPage() {
           </h1>
           {selectedComp && (
             <p className="text-xs font-bold text-amber-400 mt-1 flex items-center gap-2">
-              <span>{sportConfig.emoji} Official Sport: <strong>{activeSport}</strong></span>
-              {selectedComp.description && <span className="text-slate-400">({selectedComp.description})</span>}
+              <span>{sportConfig.emoji} Official Sport: <strong>{activeSport}</strong> ({selectedComp.type === 'individual' ? 'Solo' : 'Team'})</span>
             </p>
           )}
         </div>
@@ -278,19 +279,19 @@ export default function KnockoutPage() {
         </div>
       </div>
 
-      {championTeam && (
+      {champName && (
         <div className="max-w-lg mx-auto bg-gradient-to-r from-amber-500/20 via-yellow-500/30 to-amber-500/20 border-2 border-amber-400 p-6 rounded-3xl text-center space-y-2 shadow-2xl animate-bounce">
           <span className="text-4xl block">👑</span>
           <span className="text-xs uppercase font-extrabold text-amber-300 tracking-widest block">
             {selectedComp?.title} Official Champions
           </span>
           <h2 className="text-3xl font-black text-white flex items-center justify-center gap-2">
-            {championTeam.logo_url?.startsWith('http') ? (
-              <img src={championTeam.logo_url} alt="" className="w-10 h-10 rounded-full object-cover border-2 border-amber-400" />
+            {champLogo?.startsWith('http') ? (
+              <img src={champLogo} alt="" className="w-10 h-10 rounded-full object-cover border-2 border-amber-400" />
             ) : (
-              <span>{championTeam.logo_url || '🛡️'}</span>
+              <span>{champLogo || '🛡️'}</span>
             )}
-            {championTeam.team_name || championTeam.name}
+            {champName}
           </h2>
         </div>
       )}
