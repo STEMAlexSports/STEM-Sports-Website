@@ -1,9 +1,10 @@
 'use client';
 import { useState, useEffect } from 'react';
+import Link from 'next/link';
 import { createClient } from '@supabase/supabase-js';
 
 const SUPABASE_URL = "https://agmumcfifdxwcydzpgqr.supabase.co";
-const SUPABASE_ANON_KEY = "sb_publishable_5K3yRDYl2-OxwO78i2mk0A_GV4tDBGl";
+const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImFnbXVtY2ZpZmR4d2N5ZHpwZ3FyIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTEzODYzNjAsImV4cCI6MjE0Njk2MjM2MH0.ELpZRnnvULXqzteXCinGoZAY0Nrxau0-6qFb0vI2_iE";
 
 const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
@@ -146,7 +147,7 @@ export default function Home() {
     const { data: profData } = await supabase.from('profiles').select('*').order('points', { ascending: false });
     const { data: teamData } = await supabase.from('teams').select('*').order('points', { ascending: false });
     const { data: tmData } = await supabase.from('team_members').select('*');
-    const { data: compData } = await supabase.from('competitions').select('*');
+    const { data: compData } = await supabase.from('competitions').select('*').order('created_at', { ascending: false });
     const { data: partData } = await supabase.from('competition_participants').select('*').order('score', { ascending: false });
 
     if (sportsData) {
@@ -160,7 +161,6 @@ export default function Home() {
     if (matchData) setMatches(matchData);
     if (profData) {
       setStudents(profData);
-      // Keep active user's points refreshed live
       if (currentStudent) {
         const freshProfile = profData.find((s) => s.id === currentStudent.id);
         if (freshProfile) setCurrentStudent(freshProfile);
@@ -183,7 +183,6 @@ export default function Home() {
         .eq('student_id', currentStudent.id);
       if (donData) setUserDonations(donData);
 
-      // Fetch all donations if Admin
       if (currentStudent.is_admin) {
         const { data: allDon } = await supabase
           .from('donations')
@@ -199,7 +198,6 @@ export default function Home() {
     return match ? match.emoji : '🏆';
   };
 
-  // Custom Logo Upload
   async function handleLogoUpload(e) {
     const file = e.target.files[0];
     if (!file) return;
@@ -238,7 +236,6 @@ export default function Home() {
     }
   }
 
-  // Handle Sign In with Password Verification
   async function handleSignIn(e) {
     e.preventDefault();
     const cleanEmail = email.trim().toLowerCase();
@@ -267,7 +264,6 @@ export default function Home() {
     alert(`Welcome back, ${existing.full_name}! 🏆`);
   }
 
-  // Step 1: Handle Account Registration via Supabase Auth
   async function handleRegister(e) {
     e.preventDefault();
     if (!fullName.trim()) return alert('Please enter your full name.');
@@ -321,7 +317,6 @@ export default function Home() {
     }
   }
 
-  // Step 2: Resend OTP Code specifically for existing pending signup
   async function handleResendCode() {
     if (resendCooldown > 0) return;
 
@@ -348,7 +343,6 @@ export default function Home() {
     }
   }
 
-  // Step 3: Verify OTP Code and Create Profile
   async function handleVerifyOtp(e) {
     e.preventDefault();
     if (!otpCode.trim()) return alert('Please enter the verification code.');
@@ -382,7 +376,6 @@ export default function Home() {
     }
   }
 
-  // Helper: Upsert Profile Details into 'profiles' Table
   async function saveProfileToDatabase(userId, cleanEmail) {
     const newProfile = {
       id: userId || undefined,
@@ -440,7 +433,6 @@ export default function Home() {
     }
   }
 
-  // Submit Donation Transfer Request
   async function handleSubmitDonationProof(e) {
     e.preventDefault();
     if (!currentStudent) return alert('Please sign in to donate.');
@@ -478,7 +470,6 @@ export default function Home() {
     }
   }
 
-  // ADMIN: Approve or Reject Donation
   async function handleAdminDonationResponse(donation, approve) {
     if (approve) {
       const { error: donErr } = await supabase
@@ -517,7 +508,6 @@ export default function Home() {
     fetchData();
   }
 
-  // Respond to Team Invitation
   async function handleRespondTeamInvite(membershipId, accept) {
     if (accept) {
       const { error } = await supabase
@@ -554,7 +544,6 @@ export default function Home() {
     }
   }
 
-  // Join Individual Competition
   async function handleJoinIndividualComp(compId) {
     if (!currentStudent) return alert('Please log in first.');
 
@@ -589,7 +578,6 @@ export default function Home() {
     }
   }
 
-  // Join Team Competition
   async function handleJoinTeamComp(compId) {
     if (!currentStudent) return alert('Please log in first.');
     if (!teamToRegisterId) return alert('Please select a team to register.');
@@ -631,7 +619,6 @@ export default function Home() {
     }
   }
 
-  // Save/Edit Team
   async function handleSaveTeam(e) {
     e.preventDefault();
     if (!currentStudent) return alert('Please log in first.');
@@ -826,16 +813,22 @@ export default function Home() {
           Official Sports Committee Portal for STEM High School for Boys & Girls - Alexandria
         </p>
 
-        {currentStudent?.is_admin && (
-          <div className="mt-4">
-            <a
+        <div className="mt-4 flex flex-wrap justify-center gap-3">
+          <Link
+            href="/knockout"
+            className="inline-block px-5 py-2 bg-amber-500 hover:bg-amber-400 text-slate-950 font-black rounded-xl shadow-lg transition text-xs"
+          >
+            🏆 View Knockout Brackets →
+          </Link>
+          {currentStudent?.is_admin && (
+            <Link
               href="/admin"
-              className="inline-block px-5 py-2 bg-amber-500 hover:bg-amber-400 text-slate-950 font-black rounded-xl shadow-lg transition text-xs"
+              className="inline-block px-5 py-2 bg-indigo-600 hover:bg-indigo-500 text-white font-extrabold rounded-xl shadow-lg transition text-xs"
             >
               👑 Go To Admin Control Center →
-            </a>
-          </div>
-        )}
+            </Link>
+          )}
+        </div>
       </header>
 
       {/* Navigation Bar */}
@@ -844,7 +837,7 @@ export default function Home() {
           { id: 'dashboard', label: '📊 Dashboard' },
           { id: 'teams', label: `🛡️ Teams ${incomingTeamInvites.length > 0 ? `(${incomingTeamInvites.length})` : ''}` },
           { id: 'matches', label: '⚔️ Friendly Matches' },
-          { id: 'competitions', label: '🏆 Competitions' },
+          { id: 'competitions', label: `🏆 Competitions (${competitions.length})` },
           { id: 'leaderboard', label: '🥇 Leaderboard' },
           { id: 'stemclass', label: '🏫 STEM SPORTS CLASS' },
           { id: 'donations', label: `💰 Donations ${pendingAdminDonations.length > 0 ? `(${pendingAdminDonations.length})` : ''}` },
@@ -1134,9 +1127,8 @@ export default function Home() {
               </div>
             </section>
           ) : (
-            /* Secure Student Login / Registration / OTP Section */
+            /* Student Sign In / Registration Form */
             <section className={`p-6 rounded-2xl border shadow-xl ${themeClasses.cardBg}`}>
-              {/* Auth Mode Toggle */}
               <div className="flex gap-2 border-b border-slate-800 pb-4 mb-6">
                 <button
                   type="button"
@@ -1162,7 +1154,6 @@ export default function Home() {
                 </button>
               </div>
 
-              {/* SIGN IN FORM */}
               {authMode === 'login' && (
                 <form onSubmit={handleSignIn} className="space-y-4 max-w-md mx-auto text-sm">
                   <div>
@@ -1197,7 +1188,6 @@ export default function Home() {
                         type="button"
                         onClick={() => setShowPassword(!showPassword)}
                         className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-white text-xs select-none"
-                        title={showPassword ? 'Hide password' : 'Show password'}
                       >
                         {showPassword ? '👁️' : '🙈'}
                       </button>
@@ -1210,7 +1200,6 @@ export default function Home() {
                 </form>
               )}
 
-              {/* REGISTER FORM */}
               {authMode === 'register' && (
                 <form onSubmit={handleRegister} className="grid md:grid-cols-2 gap-4 text-sm">
                   <div className="md:col-span-2">
@@ -1257,7 +1246,6 @@ export default function Home() {
                         type="button"
                         onClick={() => setShowPassword(!showPassword)}
                         className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-white text-xs select-none"
-                        title={showPassword ? 'Hide password' : 'Show password'}
                       >
                         {showPassword ? '👁️' : '🙈'}
                       </button>
@@ -1300,7 +1288,7 @@ export default function Home() {
                     >
                       {(gender === 'Male'
                         ? [`${grade === 'G10' ? '1' : grade === 'G11' ? '2' : '3'}A`, `${grade === 'G10' ? '1' : grade === 'G11' ? '2' : '3'}B`, `${grade === 'G10' ? '1' : grade === 'G11' ? '2' : '3'}C`]
-                        : [`${grade === 'G10' ? '1' : grade === 'G11' ? '2' : '3'}D`, `${grade === 'G10' ? '1' : grade === 'G11' ? '2' : '3'}E`, `${grade === 'G10' ? '1' : grade === 'G11' ? '2' : '3'}F`]
+                        : [`${grade === 'G10' ? '1' : grade === 'G10' ? '1' : grade === 'G11' ? '2' : '3'}D`, `${grade === 'G10' ? '1' : grade === 'G11' ? '2' : '3'}E`, `${grade === 'G10' ? '1' : grade === 'G11' ? '2' : '3'}F`]
                       ).map((c) => (
                         <option key={c} value={c}>{c}</option>
                       ))}
@@ -1316,7 +1304,6 @@ export default function Home() {
                 </form>
               )}
 
-              {/* OTP VERIFICATION FORM */}
               {authMode === 'otp' && (
                 <form onSubmit={handleVerifyOtp} className="space-y-4 max-w-md mx-auto text-sm">
                   <div className="bg-emerald-950/50 border border-emerald-500/40 p-4 rounded-xl text-center">
@@ -1790,35 +1777,39 @@ export default function Home() {
         <div className="grid md:grid-cols-3 gap-6">
           <section className="bg-slate-900/90 p-5 rounded-2xl border border-slate-800 space-y-3">
             <h2 className="text-lg font-bold text-yellow-400 border-b border-slate-800 pb-2">
-              🏆 Tournaments
+              🏆 Tournaments ({competitions.length})
             </h2>
             <div className="space-y-2">
-              {competitions.map((comp) => {
-                const isSelected = comp.id === selectedCompId;
-                const isTeamComp = comp.type === 'team';
+              {competitions.length === 0 ? (
+                <p className="text-xs text-slate-500 p-2">No competitions created yet in Admin.</p>
+              ) : (
+                competitions.map((comp) => {
+                  const isSelected = comp.id === selectedCompId;
+                  const isTeamComp = comp.type === 'team';
 
-                return (
-                  <div
-                    key={comp.id}
-                    onClick={() => setSelectedCompId(comp.id)}
-                    className={`p-3.5 rounded-xl border cursor-pointer transition ${
-                      isSelected
-                        ? 'bg-amber-500/10 border-amber-500/60 shadow-md'
-                        : 'bg-slate-950 border-slate-800 hover:border-slate-700'
-                    }`}
-                  >
-                    <div className="flex justify-between items-start mb-1">
-                      <span className={`text-xxs px-2 py-0.5 rounded font-bold ${
-                        isTeamComp ? 'bg-purple-500/20 text-purple-300 border border-purple-500/30' : 'bg-cyan-500/20 text-cyan-300 border border-cyan-500/30'
-                      }`}>
-                        {isTeamComp ? '🛡️ Team Event' : '👤 Solo Event'}
-                      </span>
-                      <span className="text-xxs text-slate-400">{getSportEmoji(comp.sport)} {comp.sport}</span>
+                  return (
+                    <div
+                      key={comp.id}
+                      onClick={() => setSelectedCompId(comp.id)}
+                      className={`p-3.5 rounded-xl border cursor-pointer transition ${
+                        isSelected
+                          ? 'bg-amber-500/10 border-amber-500/60 shadow-md'
+                          : 'bg-slate-950 border-slate-800 hover:border-slate-700'
+                      }`}
+                    >
+                      <div className="flex justify-between items-start mb-1">
+                        <span className={`text-xxs px-2 py-0.5 rounded font-bold ${
+                          isTeamComp ? 'bg-purple-500/20 text-purple-300 border border-purple-500/30' : 'bg-cyan-500/20 text-cyan-300 border border-cyan-500/30'
+                        }`}>
+                          {isTeamComp ? '🛡️ Team Event' : '👤 Solo Event'}
+                        </span>
+                        <span className="text-xxs text-slate-400">{getSportEmoji(comp.sport)} {comp.sport}</span>
+                      </div>
+                      <h3 className="font-bold text-sm text-white">{comp.title}</h3>
                     </div>
-                    <h3 className="font-bold text-sm text-white">{comp.title}</h3>
-                  </div>
-                );
-              })}
+                  );
+                })
+              )}
             </div>
           </section>
 
@@ -2063,12 +2054,11 @@ export default function Home() {
         <section className="bg-slate-900/90 p-6 rounded-2xl border border-slate-800 space-y-6">
           <div>
             <h2 className="text-2xl font-bold text-emerald-400 flex items-center gap-2">
-              <span>💰</span> Equipment Crowdfunding Tracker
+              <span>💰</span> Equipment Crowdfunding Tracker ({fundraising.length})
             </h2>
             <p className="text-xs text-slate-400 mt-1">Transparent student-driven funding for new gym equipment and court repairs.</p>
           </div>
 
-          {/* ADMIN VERIFICATION TABLE ON DONATIONS TAB */}
           {currentStudent?.is_admin && pendingAdminDonations.length > 0 && (
             <div className="bg-amber-500/10 border border-amber-500/40 p-5 rounded-2xl space-y-3">
               <h3 className="font-bold text-amber-300 text-sm flex items-center gap-2">
@@ -2116,32 +2106,35 @@ export default function Home() {
             </div>
           )}
 
-          {/* Crowdfunding Items Grid */}
           <div className="grid md:grid-cols-3 gap-6">
-            {fundraising.map((item) => {
-              const percent = Math.min(100, Math.round((item.raised_amount / item.target_amount) * 100));
-              return (
-                <div key={item.id} className="bg-slate-950 p-5 rounded-xl border border-slate-800 flex flex-col justify-between">
-                  <div>
-                    <h3 className="font-bold text-base mb-1 text-white">{item.item_name}</h3>
-                    <p className="text-xs text-slate-400 mb-4">{item.description}</p>
-                    <div className="w-full bg-slate-800 h-2.5 rounded-full overflow-hidden mb-2">
-                      <div className="bg-emerald-500 h-full transition-all duration-500" style={{ width: `${percent}%` }}></div>
+            {fundraising.length === 0 ? (
+              <p className="text-xs text-slate-500 col-span-3">No active equipment goals found. Create one in the Admin dashboard!</p>
+            ) : (
+              fundraising.map((item) => {
+                const percent = Math.min(100, Math.round((item.raised_amount / item.target_amount) * 100));
+                return (
+                  <div key={item.id} className="bg-slate-950 p-5 rounded-xl border border-slate-800 flex flex-col justify-between">
+                    <div>
+                      <h3 className="font-bold text-base mb-1 text-white">{item.item_name}</h3>
+                      <p className="text-xs text-slate-400 mb-4">{item.description}</p>
+                      <div className="w-full bg-slate-800 h-2.5 rounded-full overflow-hidden mb-2">
+                        <div className="bg-emerald-500 h-full transition-all duration-500" style={{ width: `${percent}%` }}></div>
+                      </div>
+                      <div className="flex justify-between text-xs text-slate-400 mb-4">
+                        <span>Raised: {item.raised_amount} EGP</span>
+                        <span>Goal: {item.target_amount} EGP ({percent}%)</span>
+                      </div>
                     </div>
-                    <div className="flex justify-between text-xs text-slate-400 mb-4">
-                      <span>Raised: {item.raised_amount} EGP</span>
-                      <span>Goal: {item.target_amount} EGP ({percent}%)</span>
-                    </div>
+                    <button
+                      onClick={() => setDonatingItem(item)}
+                      className="w-full bg-emerald-600 hover:bg-emerald-500 text-white font-bold py-2 rounded-lg text-xs transition"
+                    >
+                      + Contribute / Donate
+                    </button>
                   </div>
-                  <button
-                    onClick={() => setDonatingItem(item)}
-                    className="w-full bg-emerald-600 hover:bg-emerald-500 text-white font-bold py-2 rounded-lg text-xs transition"
-                  >
-                    + Contribute / Donate
-                  </button>
-                </div>
-              );
-            })}
+                );
+              })
+            )}
           </div>
         </section>
       )}
