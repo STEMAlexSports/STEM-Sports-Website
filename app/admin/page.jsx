@@ -22,6 +22,10 @@ export default function AdminPage() {
   const [fundraising, setFundraising] = useState([]);
   const [donations, setDonations] = useState([]);
 
+  // Sports CRUD Form State
+  const [newSportName, setNewSportName] = useState('');
+  const [newSportEmoji, setNewSportEmoji] = useState('🏆');
+
   // Point Management Form State
   const [pointContext, setPointContext] = useState('competition');
   const [pointTarget, setPointTarget] = useState('student');
@@ -37,7 +41,7 @@ export default function AdminPage() {
 
   // Competition Form State
   const [compName, setCompName] = useState('');
-  const [compSport, setCompSport] = useState('Football');
+  const [compSport, setCompSport] = useState('');
   const [compType, setCompType] = useState('team');
   const [compDescription, setCompDescription] = useState('');
   const [compDate, setCompDate] = useState('');
@@ -45,10 +49,10 @@ export default function AdminPage() {
 
   // Team Form State
   const [newTeamName, setNewTeamName] = useState('');
-  const [newTeamSport, setNewTeamSport] = useState('General');
+  const [newTeamSport, setNewTeamSport] = useState('');
   const [teamActionMsg, setTeamActionMsg] = useState('');
 
-  // Fundraising Goal (CRUD) Form State
+  // Fundraising Goal Form State
   const [editingFundId, setEditingFundId] = useState(null);
   const [fundItemName, setFundItemName] = useState('');
   const [fundTargetAmount, setFundTargetAmount] = useState('');
@@ -104,12 +108,10 @@ export default function AdminPage() {
     const { data: fundData } = await supabase.from('fundraising').select('*').order('created_at', { ascending: false });
     const { data: donationData } = await supabase.from('donations').select('*, fundraising(item_name), profiles(full_name, email)').order('created_at', { ascending: false });
 
-    if (sportsData) {
+    if (sportsData && sportsData.length > 0) {
       setSportsList(sportsData);
-      if (sportsData.length > 0) {
-        if (!compSport) setCompSport(sportsData[0].name);
-        if (!newTeamSport) setNewTeamSport(sportsData[0].name);
-      }
+      setCompSport((prev) => prev || sportsData[0].name);
+      setNewTeamSport((prev) => prev || sportsData[0].name);
     }
 
     if (teamsData) {
@@ -132,6 +134,33 @@ export default function AdminPage() {
     if (donationData) setDonations(donationData);
   }
 
+  // --- SPORTS MANAGEMENT HANDLERS ---
+  async function handleAddSport(e) {
+    e.preventDefault();
+    if (!newSportName.trim()) return;
+
+    const { error } = await supabase.from('sports').insert([{
+      name: newSportName.trim(),
+      emoji: newSportEmoji.trim() || '🏆'
+    }]);
+
+    if (error) {
+      alert('Error adding sport: ' + error.message);
+    } else {
+      setNewSportName('');
+      setNewSportEmoji('🏆');
+      fetchAdminData();
+    }
+  }
+
+  async function handleDeleteSport(id, name) {
+    if (!confirm(`Are you sure you want to delete "${name}" from sports?`)) return;
+    const { error } = await supabase.from('sports').delete().eq('id', id);
+    if (error) alert('Delete failed: ' + error.message);
+    else fetchAdminData();
+  }
+
+  // --- POINTS HANDLERS ---
   const getCurrentCompPoints = () => {
     if (!selectedCompId) return 0;
     if (pointTarget === 'student' && selectedPlayerId) {
@@ -161,16 +190,10 @@ export default function AdminPage() {
     const delta = parseInt(pointsToAdd, 10);
 
     if (pointContext === 'competition') {
-      if (!selectedCompId) {
-        setPointActionMsg('Please select a competition.');
-        return;
-      }
+      if (!selectedCompId) return setPointActionMsg('Please select a competition.');
 
       if (pointTarget === 'student') {
-        if (!selectedPlayerId) {
-          setPointActionMsg('Please select a student.');
-          return;
-        }
+        if (!selectedPlayerId) return setPointActionMsg('Please select a student.');
 
         const { data: existingScore } = await supabase
           .from('competition_scores')
@@ -188,7 +211,6 @@ export default function AdminPage() {
           await supabase.from('competition_scores').insert([{ competition_id: selectedCompId, student_id: selectedPlayerId, points: newCompPts }]);
         }
 
-        // Sync to competition_participants
         const { data: existingParticipant } = await supabase
           .from('competition_participants')
           .select('id')
@@ -202,20 +224,15 @@ export default function AdminPage() {
           await supabase.from('competition_participants').insert([{ competition_id: selectedCompId, student_id: selectedPlayerId, score: newCompPts }]);
         }
 
-        // Update overall total student points
         const player = players.find((p) => p.id === selectedPlayerId);
         const newTotal = (player?.points || 0) + delta;
         await supabase.from('profiles').update({ points: newTotal }).eq('id', selectedPlayerId);
 
-        setPointActionMsg(`Success! Student competition points set to ${newCompPts} (Total: ${newTotal}).`);
+        setPointActionMsg(`Success! Student points updated.`);
         setPointsToAdd('');
         fetchAdminData();
-
       } else {
-        if (!selectedTeamId) {
-          setPointActionMsg('Please select a team.');
-          return;
-        }
+        if (!selectedTeamId) return setPointActionMsg('Please select a team.');
 
         const { data: existingScore } = await supabase
           .from('competition_scores')
@@ -233,7 +250,6 @@ export default function AdminPage() {
           await supabase.from('competition_scores').insert([{ competition_id: selectedCompId, team_id: selectedTeamId, points: newCompPts }]);
         }
 
-        // Sync to competition_participants
         const { data: existingParticipant } = await supabase
           .from('competition_participants')
           .select('id')
@@ -247,16 +263,14 @@ export default function AdminPage() {
           await supabase.from('competition_participants').insert([{ competition_id: selectedCompId, team_id: selectedTeamId, score: newCompPts }]);
         }
 
-        // Update overall team points
         const team = teams.find((t) => t.id === selectedTeamId);
         const newTotal = (team?.points || 0) + delta;
         await supabase.from('teams').update({ points: newTotal }).eq('id', selectedTeamId);
 
-        setPointActionMsg(`Success! Team competition points set to ${newCompPts} (Total: ${newTotal}).`);
+        setPointActionMsg(`Success! Team points updated.`);
         setPointsToAdd('');
         fetchAdminData();
       }
-
     } else {
       if (pointTarget === 'student') {
         if (!selectedPlayerId) return setPointActionMsg('Please select a student.');
@@ -266,7 +280,7 @@ export default function AdminPage() {
         const { error } = await supabase.from('profiles').update({ points: newTotal }).eq('id', selectedPlayerId);
         if (error) setPointActionMsg(`Error: ${error.message}`);
         else {
-          setPointActionMsg(`Success! Updated student total points to ${newTotal}.`);
+          setPointActionMsg(`Success! Student total updated to ${newTotal}.`);
           setPointsToAdd('');
           fetchAdminData();
         }
@@ -278,7 +292,7 @@ export default function AdminPage() {
         const { error } = await supabase.from('teams').update({ points: newTotal }).eq('id', selectedTeamId);
         if (error) setPointActionMsg(`Error: ${error.message}`);
         else {
-          setPointActionMsg(`Success! Updated team total points to ${newTotal}.`);
+          setPointActionMsg(`Success! Team total updated to ${newTotal}.`);
           setPointsToAdd('');
           fetchAdminData();
         }
@@ -287,14 +301,14 @@ export default function AdminPage() {
   }
 
   async function handleClearAllPoints() {
-    if (!confirm("⚠️ WARNING: Resets ALL student points, team points, and competition scores to 0. Continue?")) return;
+    if (!confirm("⚠️ RESET WARNING: Continue to clear ALL student, team, and tournament points to 0?")) return;
 
     await supabase.from('profiles').update({ points: 0 }).neq('id', '00000000-0000-0000-0000-000000000000');
     await supabase.from('teams').update({ points: 0 }).neq('id', '00000000-0000-0000-0000-000000000000');
     await supabase.from('competition_scores').update({ points: 0 }).neq('id', '00000000-0000-0000-0000-000000000000');
     await supabase.from('competition_participants').update({ score: 0 }).neq('id', '00000000-0000-0000-0000-000000000000');
 
-    alert("✅ All points have been reset to 0.");
+    alert("✅ All system points reset to 0.");
     fetchAdminData();
   }
 
@@ -306,7 +320,7 @@ export default function AdminPage() {
     const { error } = await supabase.from('teams').insert([{
       name: newTeamName.trim(),
       team_name: newTeamName.trim(),
-      sport: newTeamSport,
+      sport: newTeamSport || (sportsList[0]?.name || 'Football'),
       points: 0
     }]);
 
@@ -323,9 +337,11 @@ export default function AdminPage() {
     setCompActionMsg('');
     if (!compName.trim()) return setCompActionMsg('Please enter competition title.');
 
+    const selectedSportName = compSport || (sportsList[0]?.name || 'Football');
+
     const { error } = await supabase.from('competitions').insert([{ 
       title: compName.trim(), 
-      sport: compSport, 
+      sport: selectedSportName, 
       type: compType, 
       description: compDescription.trim() || null,
       date: compDate || null 
@@ -348,7 +364,7 @@ export default function AdminPage() {
     else fetchAdminData();
   }
 
-  // --- FUNDRAISING GOALS CRUD HANDLERS ---
+  // --- FUNDRAISING HANDLERS ---
   async function handleSaveFundraising(e) {
     e.preventDefault();
     setFundActionMsg('');
@@ -413,12 +429,11 @@ export default function AdminPage() {
   }
 
   async function handleDeleteFundraising(id, name) {
-    if (!confirm(`Are you sure you want to delete campaign "${name}"? This action cannot be undone.`)) return;
+    if (!confirm(`Delete campaign "${name}"?`)) return;
 
     const { error } = await supabase.from('fundraising').delete().eq('id', id);
-    if (error) alert(`Failed to delete campaign: ${error.message}`);
+    if (error) alert(`Failed to delete: ${error.message}`);
     else {
-      alert(`Campaign "${name}" deleted.`);
       if (editingFundId === id) resetFundForm();
       fetchAdminData();
     }
@@ -435,7 +450,7 @@ export default function AdminPage() {
     else fetchAdminData();
   }
 
-  // --- MANUAL DONATION RECORDING & APPROVAL HANDLERS ---
+  // --- DONATIONS HANDLERS ---
   async function handleAddDonation(e) {
     e.preventDefault();
     setDonationMsg('');
@@ -498,7 +513,7 @@ export default function AdminPage() {
         }
       }
 
-      alert('Donation approved! Progress updated and 10 points awarded.');
+      alert('Donation approved successfully!');
     } else {
       const { error: donErr } = await supabase
         .from('donations')
@@ -512,7 +527,7 @@ export default function AdminPage() {
   }
 
   async function handleDeleteDonation(id) {
-    if (!confirm('Are you sure you want to delete this donation transaction record?')) return;
+    if (!confirm('Delete this donation record?')) return;
     const { error } = await supabase.from('donations').delete().eq('id', id);
     if (error) alert('Delete failed: ' + error.message);
     else fetchAdminData();
@@ -564,14 +579,14 @@ export default function AdminPage() {
       <div className="max-w-6xl mx-auto flex flex-col md:flex-row justify-between items-start md:items-center mb-8 pb-6 border-b border-slate-800 gap-4">
         <div>
           <h1 className="text-3xl font-extrabold text-white tracking-tight">👑 Admin Control Center</h1>
-          <p className="text-slate-400 text-sm mt-1">Manage scores, teams, competitions, equipment goals & donations.</p>
+          <p className="text-slate-400 text-sm mt-1">Manage scores, sports, teams, competitions, equipment goals & donations.</p>
         </div>
         <a href="/" className="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-slate-200 text-sm font-semibold rounded-lg border border-slate-700 transition">
           &larr; Back to Home
         </a>
       </div>
 
-      {/* Tabs */}
+      {/* Navigation Tabs */}
       <div className="max-w-6xl mx-auto mb-8 flex flex-wrap gap-3 border-b border-slate-800 pb-4">
         <button
           onClick={() => setActiveTab('points')}
@@ -620,7 +635,7 @@ export default function AdminPage() {
                       onClick={() => { setPointContext('competition'); setLeaderboardView('competition'); }}
                       className={`py-1.5 rounded transition ${pointContext === 'competition' ? 'bg-indigo-600 text-white' : 'text-slate-400 hover:text-white'}`}
                     >
-                      🏆 In Competition
+                      🏆 Competition
                     </button>
                     <button
                       type="button"
@@ -856,52 +871,94 @@ export default function AdminPage() {
           </div>
         )}
 
-        {/* TAB 2: TEAMS MANAGEMENT */}
+        {/* TAB 2: TEAMS MANAGEMENT & QUICK SPORTS CONTROL */}
         {activeTab === 'teams' && (
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-            <div className="bg-slate-900 border border-slate-800 rounded-xl p-6 shadow-xl h-fit">
-              <h2 className="text-xl font-bold text-white mb-4">🛡️ Add New Team</h2>
-              <form onSubmit={handleCreateTeam} className="space-y-4">
-                <div>
-                  <label className="block text-xs font-semibold text-slate-400 uppercase mb-1">Team Name</label>
+            <div className="space-y-6">
+              {/* Add Team */}
+              <div className="bg-slate-900 border border-slate-800 rounded-xl p-6 shadow-xl">
+                <h2 className="text-xl font-bold text-white mb-4">🛡️ Add New Team</h2>
+                <form onSubmit={handleCreateTeam} className="space-y-4">
+                  <div>
+                    <label className="block text-xs font-semibold text-slate-400 uppercase mb-1">Team Name</label>
+                    <input
+                      type="text"
+                      required
+                      placeholder="e.g. Red Dragons"
+                      value={newTeamName}
+                      onChange={(e) => setNewTeamName(e.target.value)}
+                      className="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-slate-200 text-sm"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-semibold text-slate-400 uppercase mb-1">Sport / Category</label>
+                    <select
+                      value={newTeamSport}
+                      onChange={(e) => setNewTeamSport(e.target.value)}
+                      className="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-slate-200 text-sm"
+                    >
+                      {sportsList.map((s) => (
+                        <option key={s.id} value={s.name}>
+                          {s.emoji} {s.name}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+
+                  <button
+                    type="submit"
+                    className="w-full py-2.5 bg-indigo-600 hover:bg-indigo-500 text-white font-semibold rounded-lg text-sm transition"
+                  >
+                    Create Team
+                  </button>
+
+                  {teamActionMsg && (
+                    <p className={`text-xs ${teamActionMsg.startsWith('Success') ? 'text-emerald-400' : 'text-rose-400'}`}>
+                      {teamActionMsg}
+                    </p>
+                  )}
+                </form>
+              </div>
+
+              {/* Manage Sports Panel */}
+              <div className="bg-slate-900 border border-slate-800 rounded-xl p-6 shadow-xl space-y-4">
+                <h2 className="text-xl font-bold text-white">⚽ Manage Sports Database</h2>
+                <form onSubmit={handleAddSport} className="flex gap-2">
+                  <input
+                    type="text"
+                    placeholder="Emoji"
+                    value={newSportEmoji}
+                    onChange={(e) => setNewSportEmoji(e.target.value)}
+                    className="w-16 bg-slate-950 border border-slate-800 rounded px-2 text-sm text-center"
+                  />
                   <input
                     type="text"
                     required
-                    placeholder="e.g. Red Dragons"
-                    value={newTeamName}
-                    onChange={(e) => setNewTeamName(e.target.value)}
-                    className="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-slate-200 text-sm"
+                    placeholder="Sport (e.g. Swimming)"
+                    value={newSportName}
+                    onChange={(e) => setNewSportName(e.target.value)}
+                    className="w-full bg-slate-950 border border-slate-800 rounded px-3 text-sm text-white"
                   />
+                  <button className="bg-emerald-600 hover:bg-emerald-500 text-white font-bold px-3 rounded text-xs whitespace-nowrap">
+                    + Add
+                  </button>
+                </form>
+
+                <div className="space-y-1.5 max-h-40 overflow-y-auto">
+                  {sportsList.map((s) => (
+                    <div key={s.id} className="flex justify-between items-center bg-slate-950 p-2 rounded border border-slate-800 text-xs">
+                      <span className="font-bold text-white">{s.emoji} {s.name}</span>
+                      <button
+                        onClick={() => handleDeleteSport(s.id, s.name)}
+                        className="text-rose-400 hover:underline"
+                      >
+                        Delete 🗑️
+                      </button>
+                    </div>
+                  ))}
                 </div>
-
-                <div>
-                  <label className="block text-xs font-semibold text-slate-400 uppercase mb-1">Sport / Category</label>
-                  <select
-                    value={newTeamSport}
-                    onChange={(e) => setNewTeamSport(e.target.value)}
-                    className="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-slate-200 text-sm"
-                  >
-                    {sportsList.map((s) => (
-                      <option key={s.id} value={s.name}>
-                        {s.emoji} {s.name}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-
-                <button
-                  type="submit"
-                  className="w-full py-2.5 bg-indigo-600 hover:bg-indigo-500 text-white font-semibold rounded-lg text-sm transition"
-                >
-                  Create Team
-                </button>
-
-                {teamActionMsg && (
-                  <p className={`text-xs ${teamActionMsg.startsWith('Success') ? 'text-emerald-400' : 'text-rose-400'}`}>
-                    {teamActionMsg}
-                  </p>
-                )}
-              </form>
+              </div>
             </div>
 
             <div className="lg:col-span-2 bg-slate-900 border border-slate-800 rounded-xl p-6 shadow-xl">
@@ -1040,10 +1097,9 @@ export default function AdminPage() {
           </div>
         )}
 
-        {/* TAB 4: DONATIONS & EQUIPMENT FUNDRAISING GOALS (FULL CRUD) */}
+        {/* TAB 4: DONATIONS & EQUIPMENT FUNDRAISING GOALS */}
         {activeTab === 'donations' && (
           <div className="space-y-8">
-            {/* PENDING APPROVAL QUEUE FOR STUDENT DONATIONS */}
             {pendingDonationRequests.length > 0 && (
               <div className="bg-amber-500/10 border border-amber-500/40 p-5 rounded-2xl space-y-3">
                 <h2 className="font-bold text-amber-300 text-base flex items-center gap-2">
@@ -1054,7 +1110,7 @@ export default function AdminPage() {
                     <thead>
                       <tr className="border-b border-slate-800 text-slate-400">
                         <th className="p-3">Student</th>
-                        <th className="p-3">Target Campaign Item</th>
+                        <th className="p-3">Target Item</th>
                         <th className="p-3">Amount</th>
                         <th className="p-3">Sender Phone</th>
                         <th className="p-3">Tx ID / Ref</th>
@@ -1091,7 +1147,6 @@ export default function AdminPage() {
               </div>
             )}
 
-            {/* SECTION 1: CREATE / EDIT FUNDRAISING GOAL CAMPAIGNS */}
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
               <div className="bg-slate-900 border border-slate-800 rounded-xl p-6 shadow-xl h-fit">
                 <div className="flex justify-between items-center mb-4">
@@ -1147,15 +1202,6 @@ export default function AdminPage() {
                     </div>
                   </div>
 
-                  {fundTargetAmount && (
-                    <div className="bg-slate-950 p-3 rounded-lg border border-slate-800 text-xs flex justify-between items-center">
-                      <span className="text-slate-400">Progress Remaining:</span>
-                      <span className="font-bold text-amber-400">
-                        {Math.max(0, (parseFloat(fundTargetAmount) || 0) - (parseFloat(fundRaisedAmount) || 0))} EGP left
-                      </span>
-                    </div>
-                  )}
-
                   <div>
                     <label className="block text-xs font-semibold text-slate-400 uppercase mb-1">Description</label>
                     <textarea
@@ -1184,7 +1230,6 @@ export default function AdminPage() {
                 </form>
               </div>
 
-              {/* LIST OF CAMPAIGN GOALS WITH EDIT, DELETE & PROGRESS ADJUSTMENT */}
               <div className="lg:col-span-2 bg-slate-900 border border-slate-800 rounded-xl p-6 shadow-xl">
                 <h2 className="text-xl font-bold text-white mb-4">
                   📢 Active Equipment Campaigns ({fundraising.length})
@@ -1197,7 +1242,6 @@ export default function AdminPage() {
                     fundraising.map((item) => {
                       const target = item.target_amount || 0;
                       const raised = item.raised_amount || 0;
-                      const remaining = Math.max(0, target - raised);
                       const percent = target > 0 ? Math.min(100, Math.round((raised / target) * 100)) : 0;
 
                       return (
@@ -1223,7 +1267,6 @@ export default function AdminPage() {
                             </div>
                           </div>
 
-                          {/* Progress bar */}
                           <div className="space-y-1">
                             <div className="w-full bg-slate-900 h-3 rounded-full overflow-hidden border border-slate-800">
                               <div
@@ -1234,19 +1277,11 @@ export default function AdminPage() {
                             <div className="flex justify-between text-xs text-slate-300 font-medium pt-1">
                               <span>Raised: <strong className="text-emerald-400">{raised} EGP</strong></span>
                               <span>Goal: <strong className="text-white">{target} EGP</strong> ({percent}%)</span>
-                              <span>Remaining Progress Left: <strong className="text-amber-400">{remaining} EGP</strong></span>
                             </div>
                           </div>
 
-                          {/* Quick Progress Modifier Buttons */}
                           <div className="flex flex-wrap items-center gap-2 pt-2 border-t border-slate-900 text-xs">
                             <span className="text-slate-500 font-semibold text-xxs uppercase">Quick Adjust Progress:</span>
-                            <button
-                              onClick={() => handleQuickUpdateProgress(item.id, target, raised, 50)}
-                              className="px-2 py-0.5 bg-slate-800 hover:bg-slate-700 text-emerald-300 rounded text-xxs font-bold"
-                            >
-                              +50 EGP
-                            </button>
                             <button
                               onClick={() => handleQuickUpdateProgress(item.id, target, raised, 100)}
                               className="px-2 py-0.5 bg-slate-800 hover:bg-slate-700 text-emerald-300 rounded text-xxs font-bold"
@@ -1258,12 +1293,6 @@ export default function AdminPage() {
                               className="px-2 py-0.5 bg-slate-800 hover:bg-slate-700 text-emerald-300 rounded text-xxs font-bold"
                             >
                               +500 EGP
-                            </button>
-                            <button
-                              onClick={() => handleQuickUpdateProgress(item.id, target, raised, -50)}
-                              className="px-2 py-0.5 bg-slate-800 hover:bg-slate-700 text-rose-300 rounded text-xxs font-bold"
-                            >
-                              -50 EGP
                             </button>
                             <button
                               onClick={() => handleQuickUpdateProgress(item.id, target, target, 0)}
@@ -1280,7 +1309,6 @@ export default function AdminPage() {
               </div>
             </div>
 
-            {/* SECTION 2: MANUAL DONATION RECORDING & COMPLETE DONATION LEDGER */}
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
               <div className="bg-slate-900 border border-slate-800 rounded-xl p-6 shadow-xl h-fit">
                 <h2 className="text-xl font-bold text-white mb-4">💳 Record Manual Donation</h2>
@@ -1298,7 +1326,7 @@ export default function AdminPage() {
                   </div>
 
                   <div>
-                    <label className="block text-xs font-semibold text-slate-400 uppercase mb-1">Link to Campaign Goal (Optional)</label>
+                    <label className="block text-xs font-semibold text-slate-400 uppercase mb-1">Link to Goal (Optional)</label>
                     <select
                       value={selectedFundIdForDonation}
                       onChange={(e) => setSelectedFundIdForDonation(e.target.value)}
