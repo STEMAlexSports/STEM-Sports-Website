@@ -5,7 +5,7 @@ import Link from 'next/link';
 import { createClient } from '@supabase/supabase-js';
 
 const SUPABASE_URL = "https://agmumcfifdxwcydzpgqr.supabase.co";
-const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImFnbXVtY2ZpZmR4d2N5ZHpwZ3FyIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTEzODYzNjAsImV4cCI6MjE0Njk2MjM2MH0.ELpZRnnvULXqzteXCinGoZAY0Nrxau0-6qFb0vI2_iE";
+const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImFnbXVtY2ZpZmR4d2N5ZHpwZ3FyIiwicm9sZSI6ImFnbXVtY2ZpZmR4d2N5ZHpwZ3FyIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTEzODYzNjAsImV4cCI6MjEwNjk2MjM2MH0.ELpZRnnvULXqzteXCinGoZAY0Nrxau0-6qFb0vI2_iE";
 
 const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
@@ -210,7 +210,6 @@ export default function KnockoutPage() {
     <div className={`min-h-screen bg-gradient-to-b ${sportConfig.theme} text-slate-100 p-4 md:p-8 space-y-8 transition-colors duration-700`}>
       <audio ref={audioRef} src={sportConfig.musicUrl} preload="none" loop />
 
-      {/* Header */}
       <div className="max-w-7xl mx-auto flex flex-col md:flex-row justify-between items-center gap-4 border-b border-slate-800/80 pb-6">
         <div>
           <span className="px-3 py-1 rounded-full text-xs font-bold bg-amber-500/20 text-amber-300 border border-amber-500/30 inline-block mb-2">
@@ -255,7 +254,6 @@ export default function KnockoutPage() {
         </div>
       </div>
 
-      {/* Competition Selection Tabs */}
       <div className="max-w-7xl mx-auto space-y-2">
         <div className="text-center text-xs font-bold text-slate-400 uppercase tracking-widest">
           Select Competition To View Bracket & Theme:
@@ -287,7 +285,6 @@ export default function KnockoutPage() {
         </div>
       </div>
 
-      {/* Champion Banner */}
       {championTeam && (
         <div className="max-w-lg mx-auto bg-gradient-to-r from-amber-500/20 via-yellow-500/30 to-amber-500/20 border-2 border-amber-400 p-6 rounded-3xl text-center space-y-2 shadow-2xl animate-bounce">
           <span className="text-4xl block">👑</span>
@@ -305,7 +302,6 @@ export default function KnockoutPage() {
         </div>
       )}
 
-      {/* Symmetrical Bracket Display */}
       <div className="max-w-7xl mx-auto overflow-x-auto pb-8">
         <div className="min-w-[1100px] grid grid-cols-5 gap-6 items-center">
           <div className="space-y-8">
