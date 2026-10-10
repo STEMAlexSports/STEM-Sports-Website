@@ -8,7 +8,6 @@ const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBh
 
 const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
-// SPORT CONFIGURATIONS WITH CUSTOM AUDIO & COLOR THEMES
 const SPORT_CONFIGS = {
   Football: {
     theme: 'from-emerald-950 via-slate-950 to-slate-950 border-emerald-500/30',
@@ -68,7 +67,6 @@ export default function KnockoutPage() {
   const [teams, setTeams] = useState([]);
   const [knockoutMatches, setKnockoutMatches] = useState([]);
 
-  // Audio Player state
   const [isPlaying, setIsPlaying] = useState(false);
   const audioRef = useRef(null);
 
@@ -175,7 +173,6 @@ export default function KnockoutPage() {
     );
   };
 
-  // Champion Team
   const finalMatch = getMatch('FINAL');
   const championTeam = teams.find((t) => t.id === finalMatch.winner_id);
 
@@ -183,7 +180,7 @@ export default function KnockoutPage() {
     <div className={`min-h-screen bg-gradient-to-b ${sportConfig.theme} text-slate-100 p-4 md:p-8 space-y-8 transition-colors duration-700`}>
       <audio ref={audioRef} src={sportConfig.musicUrl} loop />
 
-      {/* Header Controls */}
+      {/* Header */}
       <div className="max-w-7xl mx-auto flex flex-col md:flex-row justify-between items-center gap-4 border-b border-slate-800/80 pb-6">
         <div>
           <span className="px-3 py-1 rounded-full text-xs font-bold bg-amber-500/20 text-amber-300 border border-amber-500/30 inline-block mb-2">
@@ -216,7 +213,7 @@ export default function KnockoutPage() {
         </div>
       </div>
 
-      {/* Sport Selector Tabs */}
+      {/* Sport Tabs */}
       <div className="max-w-7xl mx-auto flex flex-wrap justify-center gap-2">
         {sportsList.map((sport) => {
           const isActive = sport.name === activeSport;
@@ -236,7 +233,7 @@ export default function KnockoutPage() {
         })}
       </div>
 
-      {/* CHAMPION BANNER DISPLAY */}
+      {/* Champion Banner */}
       {championTeam && (
         <div className="max-w-lg mx-auto bg-gradient-to-r from-amber-500/20 via-yellow-500/30 to-amber-500/20 border-2 border-amber-400 p-6 rounded-3xl text-center space-y-2 shadow-2xl animate-bounce">
           <span className="text-4xl block">👑</span>
@@ -254,11 +251,11 @@ export default function KnockoutPage() {
         </div>
       )}
 
-      {/* TWO-SIDED SYMMETRICAL KNOCKOUT BRACKET LAYOUT */}
+      {/* Symmetrical 2-Sided Bracket */}
       <div className="max-w-7xl mx-auto overflow-x-auto pb-8">
         <div className="min-w-[1100px] grid grid-cols-5 gap-6 items-center">
           
-          {/* BRANCH LEFT: QUARTERFINALS 1 & 2 */}
+          {/* LEFT: QUARTERFINALS 1 & 2 */}
           <div className="space-y-8">
             <h3 className={`text-xs font-black uppercase text-center tracking-wider ${sportConfig.accentText}`}>
               Left Quarterfinals
@@ -267,7 +264,7 @@ export default function KnockoutPage() {
             {renderMatchCard('QF2', 'Quarterfinal 2')}
           </div>
 
-          {/* BRANCH LEFT: SEMIFINAL 1 */}
+          {/* LEFT: SEMIFINAL 1 */}
           <div className="space-y-6">
             <h3 className={`text-xs font-black uppercase text-center tracking-wider ${sportConfig.accentText}`}>
               Left Semifinal
@@ -275,7 +272,7 @@ export default function KnockoutPage() {
             {renderMatchCard('SF1', 'Semifinal 1')}
           </div>
 
-          {/* CENTER: GRAND FINAL MATCH & TROPHY STAND */}
+          {/* CENTER: GRAND FINAL */}
           <div className="space-y-6 text-center">
             <div className="p-4 bg-amber-500/10 border-2 border-amber-500/50 rounded-3xl space-y-2">
               <span className="text-3xl block">🏆</span>
@@ -286,7 +283,7 @@ export default function KnockoutPage() {
             {renderMatchCard('FINAL', 'Grand Final')}
           </div>
 
-          {/* BRANCH RIGHT: SEMIFINAL 2 */}
+          {/* RIGHT: SEMIFINAL 2 */}
           <div className="space-y-6">
             <h3 className={`text-xs font-black uppercase text-center tracking-wider ${sportConfig.accentText}`}>
               Right Semifinal
@@ -294,7 +291,7 @@ export default function KnockoutPage() {
             {renderMatchCard('SF2', 'Semifinal 2')}
           </div>
 
-          {/* BRANCH RIGHT: QUARTERFINALS 3 & 4 */}
+          {/* RIGHT: QUARTERFINALS 3 & 4 */}
           <div className="space-y-8">
             <h3 className={`text-xs font-black uppercase text-center tracking-wider ${sportConfig.accentText}`}>
               Right Quarterfinals
