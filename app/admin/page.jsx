@@ -19,6 +19,7 @@ export default function AdminPage() {
   const [players, setPlayers] = useState([]);
   const [competitions, setCompetitions] = useState([]);
   const [competitionScores, setCompetitionScores] = useState([]);
+  const [compParticipants, setCompParticipants] = useState([]);
   const [fundraising, setFundraising] = useState([]);
   const [donations, setDonations] = useState([]);
   const [knockoutMatches, setKnockoutMatches] = useState([]);
@@ -101,6 +102,7 @@ export default function AdminPage() {
     const { data: playersData } = await supabase.from('profiles').select('*').order('points', { ascending: false });
     const { data: compData } = await supabase.from('competitions').select('*').order('created_at', { ascending: false });
     const { data: scoreData } = await supabase.from('competition_scores').select('*');
+    const { data: partData } = await supabase.from('competition_participants').select('*');
     const { data: fundData } = await supabase.from('fundraising').select('*').order('created_at', { ascending: false });
     const { data: donationData } = await supabase.from('donations').select('*, fundraising(item_name), profiles(full_name, email)').order('created_at', { ascending: false });
     const { data: kmData } = await supabase.from('knockout_matches').select('*');
@@ -128,26 +130,29 @@ export default function AdminPage() {
     }
 
     if (scoreData) setCompetitionScores(scoreData);
+    if (partData) setCompParticipants(partData);
     if (fundData) setFundraising(fundData);
     if (donationData) setDonations(donationData);
     if (kmData) setKnockoutMatches(kmData);
   }
 
   async function handleUpdateBracketMatch(matchKey, team1Id, team2Id, winnerId) {
+    if (!selectedCompIdForBracket) {
+      return alert('Please select a competition first.');
+    }
+
     const selectedComp = competitions.find((c) => c.id === selectedCompIdForBracket);
     const sportName = selectedComp?.sport || 'Football';
 
-    let query = supabase.from('knockout_matches').select('id').eq('match_key', matchKey);
-    if (selectedCompIdForBracket) {
-      query = query.eq('competition_id', selectedCompIdForBracket);
-    } else {
-      query = query.eq('sport', sportName);
-    }
-
-    const { data: existingMatch } = await query.maybeSingle();
+    const { data: existingMatch } = await supabase
+      .from('knockout_matches')
+      .select('id')
+      .eq('competition_id', selectedCompIdForBracket)
+      .eq('match_key', matchKey)
+      .maybeSingle();
 
     const payload = {
-      competition_id: selectedCompIdForBracket || null,
+      competition_id: selectedCompIdForBracket,
       sport: sportName,
       match_key: matchKey,
       team1_id: team1Id || null,
@@ -613,6 +618,19 @@ export default function AdminPage() {
   const pendingDonationRequests = donations.filter(d => d.status === 'pending');
 
   const activeBracketComp = competitions.find(c => c.id === selectedCompIdForBracket);
+  const isTeamComp = activeBracketComp ? activeBracketComp.type !== 'individual' : true;
+
+  const registeredTeamIds = compParticipants
+    .filter((p) => p.competition_id === selectedCompIdForBracket && p.team_id)
+    .map((p) => p.team_id);
+
+  const registeredStudentIds = compParticipants
+    .filter((p) => p.competition_id === selectedCompIdForBracket && p.student_id)
+    .map((p) => p.student_id);
+
+  const availableTeams = teams.filter((t) => registeredTeamIds.includes(t.id));
+  const availableStudents = players.filter((s) => registeredStudentIds.includes(s.id));
+
   const BRACKET_MATCH_KEYS = [
     { key: 'QF1', label: 'Quarterfinal 1 (Left)' },
     { key: 'QF2', label: 'Quarterfinal 2 (Left)' },
@@ -949,7 +967,7 @@ export default function AdminPage() {
                   {competitions.length === 0 && <option value="">No competitions created yet</option>}
                   {competitions.map((c) => (
                     <option key={c.id} value={c.id}>
-                      🏆 {c.title} ({c.sport})
+                      🏆 {c.title} ({c.sport}) - {c.type === 'individual' ? 'Solo' : 'Team'}
                     </option>
                   ))}
                 </select>
@@ -958,15 +976,17 @@ export default function AdminPage() {
 
             {activeBracketComp && (
               <div className="bg-amber-500/10 border border-amber-500/30 p-3 rounded-xl text-xs text-amber-200 flex justify-between items-center">
-                <span>Currently Managing Bracket for: <strong>{activeBracketComp.title}</strong></span>
-                <span className="bg-amber-500/20 px-2 py-0.5 rounded font-bold text-amber-300">Sport: {activeBracketComp.sport}</span>
+                <span>Managing Bracket for: <strong>{activeBracketComp.title}</strong></span>
+                <span className="bg-amber-500/20 px-2.5 py-0.5 rounded font-bold text-amber-300">
+                  {isTeamComp ? '🛡️ Team Event' : '👤 Solo Event'} ({activeBracketComp.sport})
+                </span>
               </div>
             )}
 
             <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
               {BRACKET_MATCH_KEYS.map(({ key, label }) => {
                 const match = knockoutMatches.find(
-                  (m) => (selectedCompIdForBracket ? m.competition_id === selectedCompIdForBracket : m.sport === activeBracketComp?.sport) && m.match_key === key
+                  (m) => m.competition_id === selectedCompIdForBracket && m.match_key === key
                 ) || {};
 
                 return (
@@ -977,34 +997,70 @@ export default function AdminPage() {
                     </div>
 
                     <div>
-                      <label className="block text-xxs font-bold text-slate-400 uppercase mb-1">Team 1 Slot</label>
+                      <label className="block text-xxs font-bold text-slate-400 uppercase mb-1">
+                        {isTeamComp ? 'Team 1 Slot' : 'Participant 1 Slot'}
+                      </label>
                       <select
                         value={match.team1_id || ''}
                         onChange={(e) => handleUpdateBracketMatch(key, e.target.value, match.team2_id, match.winner_id)}
                         className="w-full bg-slate-950 border border-slate-800 text-white text-xs p-2.5 rounded-lg focus:border-amber-500 focus:outline-none"
                       >
                         <option value="">-- None / TBD --</option>
-                        {teams.map((t) => (
-                          <option key={t.id} value={t.id}>
-                            {t.team_name || t.name} ({t.sport})
-                          </option>
-                        ))}
+                        {isTeamComp ? (
+                          availableTeams.length === 0 ? (
+                            <option value="" disabled>No registered teams for this tournament</option>
+                          ) : (
+                            availableTeams.map((t) => (
+                              <option key={t.id} value={t.id}>
+                                🛡️ {t.team_name || t.name}
+                              </option>
+                            ))
+                          )
+                        ) : (
+                          availableStudents.length === 0 ? (
+                            <option value="" disabled>No registered students for this tournament</option>
+                          ) : (
+                            availableStudents.map((s) => (
+                              <option key={s.id} value={s.id}>
+                                👤 {s.full_name || s.email} ({s.class_name || 'Student'})
+                              </option>
+                            ))
+                          )
+                        )}
                       </select>
                     </div>
 
                     <div>
-                      <label className="block text-xxs font-bold text-slate-400 uppercase mb-1">Team 2 Slot</label>
+                      <label className="block text-xxs font-bold text-slate-400 uppercase mb-1">
+                        {isTeamComp ? 'Team 2 Slot' : 'Participant 2 Slot'}
+                      </label>
                       <select
                         value={match.team2_id || ''}
                         onChange={(e) => handleUpdateBracketMatch(key, match.team1_id, e.target.value, match.winner_id)}
                         className="w-full bg-slate-950 border border-slate-800 text-white text-xs p-2.5 rounded-lg focus:border-amber-500 focus:outline-none"
                       >
                         <option value="">-- None / TBD --</option>
-                        {teams.map((t) => (
-                          <option key={t.id} value={t.id}>
-                            {t.team_name || t.name} ({t.sport})
-                          </option>
-                        ))}
+                        {isTeamComp ? (
+                          availableTeams.length === 0 ? (
+                            <option value="" disabled>No registered teams for this tournament</option>
+                          ) : (
+                            availableTeams.map((t) => (
+                              <option key={t.id} value={t.id}>
+                                🛡️ {t.team_name || t.name}
+                              </option>
+                            ))
+                          )
+                        ) : (
+                          availableStudents.length === 0 ? (
+                            <option value="" disabled>No registered students for this tournament</option>
+                          ) : (
+                            availableStudents.map((s) => (
+                              <option key={s.id} value={s.id}>
+                                👤 {s.full_name || s.email} ({s.class_name || 'Student'})
+                              </option>
+                            ))
+                          )
+                        )}
                       </select>
                     </div>
 
@@ -1020,12 +1076,16 @@ export default function AdminPage() {
                         <option value="">-- Match In Progress (No Winner) --</option>
                         {match.team1_id && (
                           <option value={match.team1_id}>
-                            🏆 WINNER: {teams.find((t) => t.id === match.team1_id)?.team_name || 'Team 1'}
+                            🏆 WINNER: {isTeamComp 
+                              ? (teams.find((t) => t.id === match.team1_id)?.team_name || 'Team 1')
+                              : (players.find((p) => p.id === match.team1_id)?.full_name || 'Participant 1')}
                           </option>
                         )}
                         {match.team2_id && (
                           <option value={match.team2_id}>
-                            🏆 WINNER: {teams.find((t) => t.id === match.team2_id)?.team_name || 'Team 2'}
+                            🏆 WINNER: {isTeamComp 
+                              ? (teams.find((t) => t.id === match.team2_id)?.team_name || 'Team 2')
+                              : (players.find((p) => p.id === match.team2_id)?.full_name || 'Participant 2')}
                           </option>
                         )}
                       </select>
