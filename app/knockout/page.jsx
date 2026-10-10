@@ -5,78 +5,63 @@ import Link from 'next/link';
 import { createClient } from '@supabase/supabase-js';
 
 const SUPABASE_URL = "https://agmumcfifdxwcydzpgqr.supabase.co";
-const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImFnbXVtY2ZpZmR4d2N5ZHpwZ3FyIiwicm9sZSI6ImFnbXVtY2ZpZmR4d2N5ZHpwZ3FyIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTEzODYzNjAsImV4cCI6MjEwNjk2MjM2MH0.ELpZRnnvULXqzteXCinGoZAY0Nrxau0-6qFb0vI2_iE";
+const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImFnbXVtY2ZpZmR4d2N5ZHpwZ3FyIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTEzODYzNjAsImV4cCI6MjEwNjk2MjM2MH0.ELpZRnnvULXqzteXCinGoZAY0Nrxau0-6qFb0vI2_iE";
 
 const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
-// Sport-specific audio vibes and themes
 const SPORT_CONFIGS = {
   Football: {
     emoji: '⚽',
-    vibe: 'Stadium Championship Anthem',
     theme: 'from-emerald-950 via-slate-950 to-slate-950 border-emerald-500/30',
     cardBg: 'bg-emerald-950/40 border-emerald-500/30',
     accentText: 'text-emerald-400',
-    // Epic Stadium Anthem (Champions League / FIFA Vibe)
     musicUrl: 'https://raw.githubusercontent.com/effacestudios/Royalty-Free-Music-Pack/master/Sports%20Spirit.mp3',
   },
   Basketball: {
     emoji: '🏀',
-    vibe: 'NBA Arena Trap & Boom-Bap',
     theme: 'from-orange-950 via-slate-950 to-slate-950 border-orange-500/30',
     cardBg: 'bg-orange-950/40 border-orange-500/30',
     accentText: 'text-orange-400',
-    // NBA Arena Hip-Hop Beat (NBA 2K Vibe)
     musicUrl: 'https://raw.githubusercontent.com/effacestudios/Royalty-Free-Music-Pack/master/The%20Champion.mp3',
   },
   Volleyball: {
     emoji: '🏐',
-    vibe: 'High-Tempo Sports Rock',
     theme: 'from-cyan-950 via-slate-950 to-slate-950 border-cyan-500/30',
     cardBg: 'bg-cyan-950/40 border-cyan-500/30',
     accentText: 'text-cyan-400',
-    // Anime Sports Rock (Haikyuu / High Energy Vibe)
-    musicUrl: 'https://raw.githubusercontent.com/effacestudios/Royalty-Free-Music-Pack/master/Fury.mp3',
+    musicUrl: 'https://raw.githubusercontent.com/effacestudios/Royalty-Free-Music-Pack/master/Party%20Time.mp3',
   },
   Chess: {
     emoji: '♟️',
-    vibe: 'Grandmaster Orchestral Strings',
     theme: 'from-amber-950 via-slate-950 to-slate-950 border-amber-500/30',
     cardBg: 'bg-amber-950/40 border-amber-500/30',
     accentText: 'text-amber-300',
-    // Grandmaster Classical Orchestral (Queen\'s Gambit / Strategic Vibe)
     musicUrl: 'https://raw.githubusercontent.com/effacestudios/Royalty-Free-Music-Pack/master/Cinemato.mp3',
   },
   'E-Sports': {
     emoji: '🎮',
-    vibe: 'Tournament Cyber Synthwave',
     theme: 'from-purple-950 via-slate-950 to-slate-950 border-purple-500/30',
     cardBg: 'bg-purple-950/40 border-purple-500/30',
     accentText: 'text-fuchsia-400',
-    // Cyberpunk Gaming EDM (League of Legends Worlds / Valorant Vibe)
     musicUrl: 'https://raw.githubusercontent.com/effacestudios/Royalty-Free-Music-Pack/master/Gamer%20Guy.mp3',
   },
   Handball: {
     emoji: '🤾',
-    vibe: 'Euro Arena Power Rock',
     theme: 'from-rose-950 via-slate-950 to-slate-950 border-rose-500/30',
     cardBg: 'bg-rose-950/40 border-rose-500/30',
     accentText: 'text-rose-400',
-    // Fast-paced Arena Rock (European Handball Championship Vibe)
-    musicUrl: 'https://raw.githubusercontent.com/effacestudios/Royalty-Free-Music-Pack/master/Party%20Time.mp3',
+    musicUrl: 'https://raw.githubusercontent.com/effacestudios/Royalty-Free-Music-Pack/master/Fury.mp3',
   }
 };
 
 const DEFAULT_CONFIG = {
   emoji: '🏆',
-  vibe: 'Championship Theme',
   theme: 'from-blue-950 via-slate-950 to-slate-950 border-blue-500/30',
   cardBg: 'bg-slate-900/80 border-slate-800',
   accentText: 'text-cyan-400',
   musicUrl: 'https://raw.githubusercontent.com/effacestudios/Royalty-Free-Music-Pack/master/The%20Champion.mp3',
 };
 
-// Flexible fuzzy matcher to handle lowercase, partial, or modified sport names from the DB
 function getSportConfig(sportName) {
   if (!sportName) return DEFAULT_CONFIG;
   const cleanName = sportName.trim().toLowerCase();
@@ -126,13 +111,12 @@ export default function KnockoutPage() {
   const activeSport = selectedComp?.sport || 'Football';
   const sportConfig = getSportConfig(activeSport);
 
-  // Reload audio stream whenever selected competition/sport changes
   useEffect(() => {
     if (audioRef.current) {
       audioRef.current.pause();
       audioRef.current.load();
       if (isPlaying) {
-        audioRef.current.play().catch((err) => console.log('Audio playback error:', err));
+        audioRef.current.play().catch((err) => console.log('Playback error:', err));
       }
     }
   }, [selectedCompId, activeSport]);
@@ -158,7 +142,7 @@ export default function KnockoutPage() {
       audioRef.current.pause();
       setIsPlaying(false);
     } else {
-      audioRef.current.play().then(() => setIsPlaying(true)).catch((err) => console.log('Audio start error:', err));
+      audioRef.current.play().then(() => setIsPlaying(true)).catch((err) => console.log('Audio error:', err));
     }
   };
 
@@ -257,13 +241,9 @@ export default function KnockoutPage() {
             <span>{selectedComp ? selectedComp.title : 'Tournament Bracket'}</span>
           </h1>
           {selectedComp && (
-            <div className="flex flex-wrap items-center gap-2 text-xs font-bold text-amber-400 mt-1">
+            <p className="text-xs font-bold text-amber-400 mt-1 flex items-center gap-2">
               <span>{sportConfig.emoji} Official Sport: <strong>{activeSport}</strong> ({selectedComp.type === 'individual' ? 'Solo' : 'Team'})</span>
-              <span className="text-slate-600">•</span>
-              <span className="bg-slate-900/80 text-cyan-300 border border-cyan-500/30 px-2 py-0.5 rounded text-xxs font-mono">
-                🎵 {sportConfig.vibe}
-              </span>
-            </div>
+            </p>
           )}
         </div>
 
@@ -272,11 +252,11 @@ export default function KnockoutPage() {
             onClick={toggleMusic}
             className={`px-4 py-2.5 rounded-xl text-xs font-bold border transition flex items-center gap-2 ${
               isPlaying
-                ? 'bg-emerald-600 border-emerald-500 text-white shadow-lg shadow-emerald-500/30 animate-pulse'
+                ? 'bg-emerald-600 border-emerald-500 text-white shadow-lg shadow-emerald-500/30'
                 : 'bg-slate-900 border-slate-700 text-slate-300 hover:text-white'
             }`}
           >
-            {isPlaying ? `🔊 Playing: ${sportConfig.vibe}` : '🔇 Play Stadium Music'}
+            {isPlaying ? '🔊 Music Playing (Click to Mute)' : '🔇 Enable Sport Music'}
           </button>
 
           <Link
@@ -290,7 +270,7 @@ export default function KnockoutPage() {
 
       <div className="max-w-7xl mx-auto space-y-2">
         <div className="text-center text-xs font-bold text-slate-400 uppercase tracking-widest">
-          Select Competition To Switch Bracket & Audio Vibe:
+          Select Competition To View Bracket & Theme:
         </div>
         <div className="flex flex-wrap justify-center gap-2">
           {competitions.length === 0 && (
