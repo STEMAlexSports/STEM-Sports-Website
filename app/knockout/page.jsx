@@ -8,6 +8,15 @@ const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBh
 
 const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
+const DEFAULT_SPORTS = [
+  { id: '1', name: 'Football', emoji: '⚽' },
+  { id: '2', name: 'Basketball', emoji: '🏀' },
+  { id: '3', name: 'Volleyball', emoji: '🏐' },
+  { id: '4', name: 'Chess', emoji: '♟️' },
+  { id: '5', name: 'E-Sports', emoji: '🎮' },
+  { id: '6', name: 'Handball', emoji: '🤾' },
+];
+
 const SPORT_CONFIGS = {
   Football: {
     theme: 'from-emerald-950 via-slate-950 to-slate-950 border-emerald-500/30',
@@ -62,24 +71,28 @@ const DEFAULT_CONFIG = {
 };
 
 export default function KnockoutPage() {
-  const [sportsList, setSportsList] = useState([]);
+  const [sportsList, setSportsList] = useState(DEFAULT_SPORTS);
   const [activeSport, setActiveSport] = useState('Football');
   const [teams, setTeams] = useState([]);
   const [knockoutMatches, setKnockoutMatches] = useState([]);
 
-  const [isPlaying, setIsPlaying] = useState(false);
+  const [isPlaying, setIsPlaying] = useState(true);
   const audioRef = useRef(null);
 
   useEffect(() => {
     fetchData();
   }, []);
 
+  // Autoplay music when active sport changes or page loads
   useEffect(() => {
     if (audioRef.current) {
       audioRef.current.pause();
       audioRef.current.load();
       if (isPlaying) {
-        audioRef.current.play().catch(() => setIsPlaying(false));
+        audioRef.current.play().catch(() => {
+          // If browser policy blocks autoplay before user interaction
+          setIsPlaying(false);
+        });
       }
     }
   }, [activeSport]);
@@ -91,8 +104,10 @@ export default function KnockoutPage() {
 
     if (sportsData && sportsData.length > 0) {
       setSportsList(sportsData);
-      if (!activeSport) setActiveSport(sportsData[0].name);
+    } else {
+      setSportsList(DEFAULT_SPORTS);
     }
+
     if (teamsData) setTeams(teamsData);
     if (kmData) setKnockoutMatches(kmData);
   }
@@ -103,7 +118,7 @@ export default function KnockoutPage() {
       audioRef.current.pause();
       setIsPlaying(false);
     } else {
-      audioRef.current.play().then(() => setIsPlaying(true)).catch((err) => console.log('Audio error:', err));
+      audioRef.current.play().then(() => setIsPlaying(true)).catch((err) => console.log('Audio playback error:', err));
     }
   };
 
@@ -177,8 +192,8 @@ export default function KnockoutPage() {
   const championTeam = teams.find((t) => t.id === finalMatch.winner_id);
 
   return (
-    <div className={`min-h-screen bg-gradient-to-b ${sportConfig.theme} text-slate-100 p-4 md:p-8 space-y-8 transition-colors duration-700`}>
-      <audio ref={audioRef} src={sportConfig.musicUrl} loop />
+    <div dir="ltr" className={`min-h-screen bg-gradient-to-b ${sportConfig.theme} text-slate-100 p-4 md:p-8 space-y-8 transition-colors duration-700 text-left`}>
+      <audio ref={audioRef} src={sportConfig.musicUrl} autoPlay loop />
 
       {/* Header */}
       <div className="max-w-7xl mx-auto flex flex-col md:flex-row justify-between items-center gap-4 border-b border-slate-800/80 pb-6">
@@ -200,7 +215,7 @@ export default function KnockoutPage() {
                 : 'bg-slate-900 border-slate-700 text-slate-300 hover:text-white'
             }`}
           >
-            {isPlaying ? '🔊 Music Playing' : '🔇 Enable Sport Music'}
+            {isPlaying ? '🔊 Stop Music' : '🔇 Play Sport Music'}
             <span className="text-xxs text-slate-300 opacity-80">({sportConfig.musicTitle})</span>
           </button>
 
@@ -213,13 +228,13 @@ export default function KnockoutPage() {
         </div>
       </div>
 
-      {/* Sport Tabs */}
+      {/* Sport Tabs Bar - ALWAYS Visible */}
       <div className="max-w-7xl mx-auto flex flex-wrap justify-center gap-2">
         {sportsList.map((sport) => {
           const isActive = sport.name === activeSport;
           return (
             <button
-              key={sport.id}
+              key={sport.id || sport.name}
               onClick={() => setActiveSport(sport.name)}
               className={`px-5 py-2.5 rounded-2xl text-xs font-bold transition duration-300 ${
                 isActive
