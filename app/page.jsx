@@ -30,6 +30,7 @@ function TeamLogo({ logo, sizeClass = "w-6 h-6 text-base" }) {
 export default function Home() {
   const [activeTab, setActiveTab] = useState('dashboard');
 
+  const [sportsList, setSportsList] = useState([]);
   const [fundraising, setFundraising] = useState([]);
   const [matches, setMatches] = useState([]);
   const [students, setStudents] = useState([]);
@@ -139,6 +140,7 @@ export default function Home() {
   }, [currentStudent?.id, activeTab]);
 
   async function fetchData() {
+    const { data: sportsData } = await supabase.from('sports').select('*').order('name', { ascending: true });
     const { data: fundData } = await supabase.from('fundraising').select('*');
     const { data: matchData } = await supabase.from('matches').select('*');
     const { data: profData } = await supabase.from('profiles').select('*').order('points', { ascending: false });
@@ -147,6 +149,13 @@ export default function Home() {
     const { data: compData } = await supabase.from('competitions').select('*');
     const { data: partData } = await supabase.from('competition_participants').select('*').order('score', { ascending: false });
 
+    if (sportsData) {
+      setSportsList(sportsData);
+      if (sportsData.length > 0) {
+        if (!newTeamSport) setNewTeamSport(sportsData[0].name);
+        if (!matchSport) setMatchSport(sportsData[0].name);
+      }
+    }
     if (fundData) setFundraising(fundData);
     if (matchData) setMatches(matchData);
     if (profData) {
@@ -184,6 +193,11 @@ export default function Home() {
       }
     }
   }
+
+  const getSportEmoji = (sportName) => {
+    const match = sportsList.find((s) => s.name?.toLowerCase() === sportName?.toLowerCase());
+    return match ? match.emoji : '🏆';
+  };
 
   // Custom Logo Upload
   async function handleLogoUpload(e) {
@@ -935,7 +949,7 @@ export default function Home() {
                       <div key={invite.id} className="bg-slate-950 p-3 rounded-lg border border-slate-800 flex flex-col md:flex-row justify-between items-start md:items-center gap-2 text-xs">
                         <div>
                           <span className="font-bold text-white flex items-center gap-1.5">
-                            <TeamLogo logo={teamObj?.logo_url} /> {teamObj?.team_name || teamObj?.name} ({teamObj?.sport})
+                            <TeamLogo logo={teamObj?.logo_url} /> {teamObj?.team_name || teamObj?.name} ({getSportEmoji(teamObj?.sport)} {teamObj?.sport})
                           </span>
                           <p className="text-slate-400 text-xxs mt-0.5">
                             Captain <span className="text-slate-200">{captainObj?.full_name}</span> invited you to join their team.
@@ -975,7 +989,7 @@ export default function Home() {
                         <div>
                           <span className="font-bold text-white">
                             <TeamLogo logo={challengerTeam?.logo_url} /> {challengerTeam?.team_name || challengerTeam?.name}
-                          </span> challenged your team <span className="font-bold text-cyan-400">{opponentTeam?.team_name || opponentTeam?.name}</span> in <span className="underline">{match.sport}</span>
+                          </span> challenged your team <span className="font-bold text-cyan-400">{opponentTeam?.team_name || opponentTeam?.name}</span> in <span className="underline">{getSportEmoji(match.sport)} {match.sport}</span>
                           <p className="text-slate-400 text-xxs mt-0.5">Date: {new Date(match.match_time).toLocaleString()}</p>
                         </div>
                         <div className="flex gap-2">
@@ -1378,7 +1392,7 @@ export default function Home() {
                         <span className="font-bold text-white text-sm flex items-center gap-1.5">
                           <TeamLogo logo={teamObj?.logo_url} /> {teamObj?.team_name || teamObj?.name}
                         </span>
-                        <span className="text-slate-400 block mt-1">Sport: {teamObj?.sport}</span>
+                        <span className="text-slate-400 block mt-1">Sport: {getSportEmoji(teamObj?.sport)} {teamObj?.sport}</span>
                         <span className="text-slate-400 block text-xxs">Invited by Captain: {captainObj?.full_name}</span>
                       </div>
                       <div className="flex flex-col gap-1.5">
@@ -1419,7 +1433,7 @@ export default function Home() {
                       <div className="flex justify-between items-center border-b border-slate-800 pb-2">
                         <span className="font-bold text-white text-sm flex items-center gap-2">
                           <TeamLogo logo={team.logo_url} /> {team.team_name || team.name}
-                          <span className="text-xxs font-normal text-slate-400">({team.sport})</span>
+                          <span className="text-xxs font-normal text-slate-400">({getSportEmoji(team.sport)} {team.sport})</span>
                         </span>
                         <div className="flex items-center gap-2">
                           <span className={`text-xxs px-2 py-0.5 rounded font-bold ${
@@ -1525,11 +1539,11 @@ export default function Home() {
                     onChange={(e) => setNewTeamSport(e.target.value)}
                     className="w-full bg-slate-950 border border-slate-700 rounded p-2 text-xs text-white"
                   >
-                    <option>Football</option>
-                    <option>Volleyball</option>
-                    <option>Basketball</option>
-                    <option>Table Tennis</option>
-                    <option>Chess</option>
+                    {sportsList.map((s) => (
+                      <option key={s.id} value={s.name}>
+                        {s.emoji} {s.name}
+                      </option>
+                    ))}
                   </select>
                 </div>
 
@@ -1571,7 +1585,7 @@ export default function Home() {
                       <div key={team.id} className="bg-slate-950 p-3.5 rounded-xl border border-slate-800 space-y-2 text-xs">
                         <div className="flex justify-between items-center">
                           <span className="font-bold text-white text-sm flex items-center gap-1.5">
-                            <TeamLogo logo={team.logo_url} /> {team.team_name || team.name} <span className="text-xxs font-normal text-slate-400">({team.sport})</span>
+                            <TeamLogo logo={team.logo_url} /> {team.team_name || team.name} <span className="text-xxs font-normal text-slate-400">({getSportEmoji(team.sport)} {team.sport})</span>
                           </span>
                           <div className="flex gap-1">
                             <button
@@ -1676,7 +1690,7 @@ export default function Home() {
                   <option value="">Select your team...</option>
                   {myCreatedTeams.map((t) => (
                     <option key={t.id} value={t.id}>
-                      {t.logo_url?.startsWith('http') ? '🖼️' : t.logo_url} {t.team_name || t.name} ({t.sport})
+                      {t.logo_url?.startsWith('http') ? '🖼️' : t.logo_url} {t.team_name || t.name} ({getSportEmoji(t.sport)} {t.sport})
                     </option>
                   ))}
                 </select>
@@ -1694,7 +1708,7 @@ export default function Home() {
                     .filter((t) => t.captain_id !== currentStudent?.id)
                     .map((t) => (
                       <option key={t.id} value={t.id}>
-                        {t.logo_url?.startsWith('http') ? '🖼️' : t.logo_url} {t.team_name || t.name} ({t.sport})
+                        {t.logo_url?.startsWith('http') ? '🖼️' : t.logo_url} {t.team_name || t.name} ({getSportEmoji(t.sport)} {t.sport})
                       </option>
                     ))}
                 </select>
@@ -1708,11 +1722,11 @@ export default function Home() {
                     onChange={(e) => setMatchSport(e.target.value)}
                     className="w-full bg-slate-950 border border-slate-700 rounded-lg p-2.5 text-white"
                   >
-                    <option>Football</option>
-                    <option>Volleyball</option>
-                    <option>Basketball</option>
-                    <option>Chess</option>
-                    <option>Table Tennis</option>
+                    {sportsList.map((s) => (
+                      <option key={s.id} value={s.name}>
+                        {s.emoji} {s.name}
+                      </option>
+                    ))}
                   </select>
                 </div>
                 <div>
@@ -1750,7 +1764,7 @@ export default function Home() {
                           <span className="text-slate-500 font-normal">vs</span>
                           <TeamLogo logo={oppTeam?.logo_url} /> {oppTeam?.team_name || oppTeam?.name || 'Opponent'}
                         </span>
-                        <span className="text-slate-400 block text-xxs mt-1">Sport: {match.sport}</span>
+                        <span className="text-slate-400 block text-xxs mt-1">Sport: {getSportEmoji(match.sport)} {match.sport}</span>
                         <span className="text-slate-400 block text-xxs">
                           Time: {match.match_time ? new Date(match.match_time).toLocaleString() : match.match_date}
                         </span>
@@ -1799,7 +1813,7 @@ export default function Home() {
                       }`}>
                         {isTeamComp ? '🛡️ Team Event' : '👤 Solo Event'}
                       </span>
-                      <span className="text-xxs text-slate-400">{comp.sport}</span>
+                      <span className="text-xxs text-slate-400">{getSportEmoji(comp.sport)} {comp.sport}</span>
                     </div>
                     <h3 className="font-bold text-sm text-white">{comp.title}</h3>
                   </div>
