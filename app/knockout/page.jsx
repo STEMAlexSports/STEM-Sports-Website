@@ -1,10 +1,11 @@
 'use client';
 
 import { useState, useEffect, useRef } from 'react';
+import Link from 'next/link';
 import { createClient } from '@supabase/supabase-js';
 
 const SUPABASE_URL = "https://agmumcfifdxwcydzpgqr.supabase.co";
-const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImFnbXVtY2ZpZmR4d2N5ZHpwZ3FyIiwicm9sZSI6ImFnbXVtY2ZpZmR4d2N5ZHpwZ3FyIiwiaWF0IjoxNzkxMzg2MzYwLCJleHAiOjIxMDY5NjIzNjB9.ELpZRnnvULXqzteXCinGoZAY0Nrxau0-6qFb0vI2_iE";
+const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImFnbXVtY2ZpZmR4d2N5ZHpwZ3FyIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTEzODYzNjAsImV4cCI6MjE0Njk2MjM2MH0.ELpZRnnvULXqzteXCinGoZAY0Nrxau0-6qFb0vI2_iE";
 
 const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
@@ -79,6 +80,17 @@ export default function KnockoutPage() {
 
   useEffect(() => {
     fetchData();
+
+    const channel = supabase
+      .channel('knockout-db-changes')
+      .on('postgres_changes', { event: '*', schema: 'public' }, () => {
+        fetchData();
+      })
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
   }, []);
 
   const selectedComp = competitions.find(c => c.id === selectedCompId) || competitions[0];
@@ -102,7 +114,7 @@ export default function KnockoutPage() {
 
     if (compData && compData.length > 0) {
       setCompetitions(compData);
-      setSelectedCompId(compData[0].id);
+      if (!selectedCompId) setSelectedCompId(compData[0].id);
     }
     if (teamsData) setTeams(teamsData);
     if (kmData) setKnockoutMatches(kmData);
@@ -120,7 +132,6 @@ export default function KnockoutPage() {
 
   const handleSelectCompetition = (compId) => {
     setSelectedCompId(compId);
-    // Auto-attempt play on user interaction
     if (!isPlaying && audioRef.current) {
       audioRef.current.play().then(() => setIsPlaying(true)).catch(() => {});
     }
@@ -197,7 +208,6 @@ export default function KnockoutPage() {
 
   return (
     <div className={`min-h-screen bg-gradient-to-b ${sportConfig.theme} text-slate-100 p-4 md:p-8 space-y-8 transition-colors duration-700`}>
-      {/* Audio element with preload="none" for instant page loading */}
       <audio ref={audioRef} src={sportConfig.musicUrl} preload="none" loop />
 
       {/* Header */}
@@ -217,7 +227,7 @@ export default function KnockoutPage() {
           )}
         </div>
 
-        <div className="flex items-center gap-3">
+        <div className="flex flex-wrap items-center gap-3">
           <button
             onClick={toggleMusic}
             className={`px-4 py-2.5 rounded-xl text-xs font-bold border transition flex items-center gap-2 ${
@@ -229,12 +239,19 @@ export default function KnockoutPage() {
             {isPlaying ? '🔊 Music Playing (Click to Mute)' : '🔇 Enable Sport Music'}
           </button>
 
-          <a
+          <Link
+            href="/admin"
+            className="px-4 py-2.5 bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-bold rounded-xl border border-indigo-500/50 transition"
+          >
+            👑 Admin Dashboard
+          </Link>
+
+          <Link
             href="/"
             className="px-4 py-2.5 bg-slate-900 hover:bg-slate-800 text-slate-300 text-xs font-bold rounded-xl border border-slate-800 transition"
           >
             ← Back Home
-          </a>
+          </Link>
         </div>
       </div>
 
@@ -288,11 +305,9 @@ export default function KnockoutPage() {
         </div>
       )}
 
-      {/* Symmetrical 2-Sided Bracket */}
+      {/* Symmetrical Bracket Display */}
       <div className="max-w-7xl mx-auto overflow-x-auto pb-8">
         <div className="min-w-[1100px] grid grid-cols-5 gap-6 items-center">
-          
-          {/* LEFT: QUARTERFINALS 1 & 2 */}
           <div className="space-y-8">
             <h3 className={`text-xs font-black uppercase text-center tracking-wider ${sportConfig.accentText}`}>
               Left Quarterfinals
@@ -301,7 +316,6 @@ export default function KnockoutPage() {
             {renderMatchCard('QF2', 'Quarterfinal 2')}
           </div>
 
-          {/* LEFT: SEMIFINAL 1 */}
           <div className="space-y-6">
             <h3 className={`text-xs font-black uppercase text-center tracking-wider ${sportConfig.accentText}`}>
               Left Semifinal
@@ -309,7 +323,6 @@ export default function KnockoutPage() {
             {renderMatchCard('SF1', 'Semifinal 1')}
           </div>
 
-          {/* CENTER: GRAND FINAL */}
           <div className="space-y-6 text-center">
             <div className="p-4 bg-amber-500/10 border-2 border-amber-500/50 rounded-3xl space-y-2">
               <span className="text-3xl block">🏆</span>
@@ -320,7 +333,6 @@ export default function KnockoutPage() {
             {renderMatchCard('FINAL', 'Grand Final')}
           </div>
 
-          {/* RIGHT: SEMIFINAL 2 */}
           <div className="space-y-6">
             <h3 className={`text-xs font-black uppercase text-center tracking-wider ${sportConfig.accentText}`}>
               Right Semifinal
@@ -328,7 +340,6 @@ export default function KnockoutPage() {
             {renderMatchCard('SF2', 'Semifinal 2')}
           </div>
 
-          {/* RIGHT: QUARTERFINALS 3 & 4 */}
           <div className="space-y-8">
             <h3 className={`text-xs font-black uppercase text-center tracking-wider ${sportConfig.accentText}`}>
               Right Quarterfinals
@@ -336,7 +347,6 @@ export default function KnockoutPage() {
             {renderMatchCard('QF3', 'Quarterfinal 3')}
             {renderMatchCard('QF4', 'Quarterfinal 4')}
           </div>
-
         </div>
       </div>
     </div>
