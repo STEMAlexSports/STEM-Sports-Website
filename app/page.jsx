@@ -4,11 +4,10 @@ import Link from 'next/link';
 import { createClient } from '@supabase/supabase-js';
 
 const SUPABASE_URL = "https://agmumcfifdxwcydzpgqr.supabase.co";
-const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImFnbXVtY2ZpZmR4d2N5ZHpwZ3FyIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTEzODYzNjAsImV4cCI6MjE0Njk2MjM2MH0.ELpZRnnvULXqzteXCinGoZAY0Nrxau0-6qFb0vI2_iE";
+const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImFnbXVtY2ZpZmR4d2N5ZHpwZ3FyIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTEzODYzNjAsImV4cCI6MjEwNjk2MjM2MH0.ELpZRnnvULXqzteXCinGoZAY0Nrxau0-6qFb0vI2_iE";
 
 const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
-// SET YOUR VODAFONE CASH NUMBER AND INSTAPAY USERNAME HERE
 const VODAFONE_CASH_NUMBER = "010XXXXXXXX"; 
 const INSTAPAY_ADDRESS = "yourname@instapay"; 
 
@@ -42,19 +41,15 @@ export default function Home() {
   const [userDonations, setUserDonations] = useState([]);
   const [allDonations, setAllDonations] = useState([]);
 
-  // Active Session
   const [currentStudent, setCurrentStudent] = useState(null);
 
-  // Selected Competition View
   const [selectedCompId, setSelectedCompId] = useState(null);
   const [teamToRegisterId, setTeamToRegisterId] = useState('');
 
-  // Auth Card Mode ('login' | 'register' | 'otp')
   const [authMode, setAuthMode] = useState('login');
   const [loadingAuth, setLoadingAuth] = useState(false);
   const [resendCooldown, setResendCooldown] = useState(0);
 
-  // Auth Input States
   const [fullName, setFullName] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -64,14 +59,12 @@ export default function Home() {
   const [grade, setGrade] = useState('G10');
   const [className, setClassName] = useState('1A');
 
-  // Donation Payment Modal States
   const [donatingItem, setDonatingItem] = useState(null);
   const [donationAmount, setDonationAmount] = useState('');
   const [senderPhone, setSenderPhone] = useState('');
   const [transactionId, setTransactionId] = useState('');
   const [submittingDonation, setSubmittingDonation] = useState(false);
 
-  // Team Form States
   const [newTeamName, setNewTeamName] = useState('');
   const [newTeamSport, setNewTeamSport] = useState('Football');
   const [newTeamLogo, setNewTeamLogo] = useState('🛡️');
@@ -79,13 +72,11 @@ export default function Home() {
   const [editingTeamId, setEditingTeamId] = useState(null);
   const [selectedStudentToAdd, setSelectedStudentToAdd] = useState('');
 
-  // Match Challenge States
   const [challengerTeamId, setChallengerTeamId] = useState('');
   const [opponentTeamId, setOpponentTeamId] = useState('');
   const [matchSport, setMatchSport] = useState('Football');
   const [matchDateTime, setMatchDateTime] = useState('');
 
-  // Restore Session automatically
   useEffect(() => {
     async function restoreSession() {
       const savedEmail = localStorage.getItem('stem_student_email');
@@ -102,7 +93,6 @@ export default function Home() {
     restoreSession();
   }, []);
 
-  // 60-second Resend Cooldown Countdown Timer
   useEffect(() => {
     let timer;
     if (resendCooldown > 0) {
@@ -113,7 +103,6 @@ export default function Home() {
     return () => clearInterval(timer);
   }, [resendCooldown]);
 
-  // Class selection rules
   useEffect(() => {
     const prefix = grade === 'G10' ? '1' : grade === 'G11' ? '2' : '3';
     if (gender === 'Male') {
@@ -123,11 +112,9 @@ export default function Home() {
     }
   }, [gender, grade]);
 
-  // Fetch data & establish Realtime Listener for instant point updates
   useEffect(() => {
     fetchData();
 
-    // Live point sync without manual page refresh
     const channel = supabase
       .channel('schema-db-changes')
       .on('postgres_changes', { event: '*', schema: 'public' }, () => {
@@ -742,7 +729,6 @@ export default function Home() {
     }
   }
 
-  // Gender Themes
   const isFemale = currentStudent?.gender === 'Female';
   const themeClasses = isFemale
     ? {
@@ -803,7 +789,6 @@ export default function Home() {
 
   return (
     <div className="max-w-6xl mx-auto p-4 md:p-8 space-y-8 font-sans text-slate-100">
-      {/* Header Banner */}
       <header className={`text-center bg-gradient-to-r ${themeClasses.headerBg} p-8 rounded-3xl border shadow-2xl relative overflow-hidden`}>
         <span className={`px-4 py-1.5 rounded-full text-sm font-bold inline-block mb-3 border ${themeClasses.badge}`}>
           Ready To Be Our New Champion 🏆
@@ -831,7 +816,6 @@ export default function Home() {
         </div>
       </header>
 
-      {/* Navigation Bar */}
       <nav className="bg-slate-900/90 border border-slate-800 p-2 rounded-2xl flex flex-wrap justify-center gap-1.5 md:gap-2 shadow-xl sticky top-4 z-50 backdrop-blur-md text-xs md:text-sm">
         {[
           { id: 'dashboard', label: '📊 Dashboard' },
@@ -856,7 +840,6 @@ export default function Home() {
         ))}
       </nav>
 
-      {/* 1. DASHBOARD PAGE */}
       {activeTab === 'dashboard' && (
         <div className="space-y-6">
           {currentStudent ? (
@@ -892,7 +875,6 @@ export default function Home() {
                 </div>
               </div>
 
-              {/* ADMIN PANEL ALERT FOR PENDING DONATION APPROVALS */}
               {currentStudent.is_admin && pendingAdminDonations.length > 0 && (
                 <div className="mb-6 bg-amber-500/10 border border-amber-500/50 p-4 rounded-2xl space-y-3">
                   <h3 className="font-bold text-amber-300 text-sm flex items-center gap-2">
@@ -929,7 +911,6 @@ export default function Home() {
                 </div>
               )}
 
-              {/* Pending Team Invitations Alert */}
               {incomingTeamInvites.length > 0 && (
                 <div className="mb-6 bg-blue-500/10 border border-blue-500/40 p-4 rounded-xl space-y-3">
                   <h3 className="font-bold text-cyan-300 text-sm flex items-center gap-2">
@@ -968,7 +949,6 @@ export default function Home() {
                 </div>
               )}
 
-              {/* Incoming Match Challenges Alert */}
               {incomingMatchChallenges.length > 0 && (
                 <div className="mb-6 bg-amber-500/10 border border-amber-500/40 p-4 rounded-xl space-y-3">
                   <h3 className="font-bold text-amber-400 text-sm flex items-center gap-2">
@@ -1005,7 +985,6 @@ export default function Home() {
                 </div>
               )}
 
-              {/* 4-Card Dashboard Grid */}
               <div className="grid md:grid-cols-2 lg:grid-cols-4 gap-6 text-sm">
                 <div className="bg-slate-950/60 p-4 rounded-xl border border-slate-800 space-y-2 flex flex-col justify-between">
                   <div>
@@ -1127,7 +1106,6 @@ export default function Home() {
               </div>
             </section>
           ) : (
-            /* Student Sign In / Registration Form */
             <section className={`p-6 rounded-2xl border shadow-xl ${themeClasses.cardBg}`}>
               <div className="flex gap-2 border-b border-slate-800 pb-4 mb-6">
                 <button
@@ -1288,7 +1266,7 @@ export default function Home() {
                     >
                       {(gender === 'Male'
                         ? [`${grade === 'G10' ? '1' : grade === 'G11' ? '2' : '3'}A`, `${grade === 'G10' ? '1' : grade === 'G11' ? '2' : '3'}B`, `${grade === 'G10' ? '1' : grade === 'G11' ? '2' : '3'}C`]
-                        : [`${grade === 'G10' ? '1' : grade === 'G10' ? '1' : grade === 'G11' ? '2' : '3'}D`, `${grade === 'G10' ? '1' : grade === 'G11' ? '2' : '3'}E`, `${grade === 'G10' ? '1' : grade === 'G11' ? '2' : '3'}F`]
+                        : [`${grade === 'G10' ? '1' : grade === 'G11' ? '2' : '3'}D`, `${grade === 'G10' ? '1' : grade === 'G11' ? '2' : '3'}E`, `${grade === 'G10' ? '1' : grade === 'G11' ? '2' : '3'}F`]
                       ).map((c) => (
                         <option key={c} value={c}>{c}</option>
                       ))}
@@ -1361,7 +1339,6 @@ export default function Home() {
         </div>
       )}
 
-      {/* 2. TEAMS PAGE */}
       {activeTab === 'teams' && (
         <div className="space-y-8">
           {incomingTeamInvites.length > 0 && (
@@ -1661,7 +1638,6 @@ export default function Home() {
         </div>
       )}
 
-      {/* 3. FRIENDLY MATCHES PAGE */}
       {activeTab === 'matches' && (
         <div className="grid md:grid-cols-2 gap-8">
           <section className="bg-slate-900/90 p-6 rounded-2xl border border-slate-800 space-y-4">
@@ -1772,7 +1748,6 @@ export default function Home() {
         </div>
       )}
 
-      {/* 4. COMPETITIONS PAGE */}
       {activeTab === 'competitions' && (
         <div className="grid md:grid-cols-3 gap-6">
           <section className="bg-slate-900/90 p-5 rounded-2xl border border-slate-800 space-y-3">
@@ -1970,7 +1945,6 @@ export default function Home() {
         </div>
       )}
 
-      {/* 5. OVERALL LEADERBOARD PAGE */}
       {activeTab === 'leaderboard' && (
         <section className="bg-slate-900/90 p-6 rounded-2xl border border-slate-800 space-y-4">
           <h2 className="text-2xl font-bold text-amber-400 flex items-center gap-2">
@@ -2015,7 +1989,6 @@ export default function Home() {
         </section>
       )}
 
-      {/* 6. STEM SPORTS CLASS PAGE */}
       {activeTab === 'stemclass' && (
         <section className="bg-slate-900/90 p-6 rounded-2xl border border-slate-800 space-y-4">
           <h2 className="text-2xl font-bold text-cyan-400 flex items-center gap-2">
@@ -2049,7 +2022,6 @@ export default function Home() {
         </section>
       )}
 
-      {/* 7. DONATIONS PAGE */}
       {activeTab === 'donations' && (
         <section className="bg-slate-900/90 p-6 rounded-2xl border border-slate-800 space-y-6">
           <div>
@@ -2139,7 +2111,6 @@ export default function Home() {
         </section>
       )}
 
-      {/* VODAFONE CASH & INSTAPAY DONATION PAYMENT MODAL */}
       {donatingItem && (
         <div className="fixed inset-0 bg-slate-950/80 backdrop-blur-sm z-50 flex items-center justify-center p-4">
           <div className="bg-slate-900 border border-slate-800 rounded-2xl p-6 max-w-md w-full space-y-4 text-sm shadow-2xl">
