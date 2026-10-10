@@ -798,22 +798,16 @@ export default function Home() {
           Official Sports Committee Portal for STEM High School for Boys & Girls - Alexandria
         </p>
 
-        <div className="mt-4 flex flex-wrap justify-center gap-3">
-          <Link
-            href="/knockout"
-            className="inline-block px-5 py-2 bg-amber-500 hover:bg-amber-400 text-slate-950 font-black rounded-xl shadow-lg transition text-xs"
-          >
-            🏆 View Knockout Brackets →
-          </Link>
-          {currentStudent?.is_admin && (
+        {currentStudent?.is_admin && (
+          <div className="mt-4 flex flex-wrap justify-center gap-3">
             <Link
               href="/admin"
               className="inline-block px-5 py-2 bg-indigo-600 hover:bg-indigo-500 text-white font-extrabold rounded-xl shadow-lg transition text-xs"
             >
               👑 Go To Admin Control Center →
             </Link>
-          )}
-        </div>
+          </div>
+        )}
       </header>
 
       <nav className="bg-slate-900/90 border border-slate-800 p-2 rounded-2xl flex flex-wrap justify-center gap-1.5 md:gap-2 shadow-xl sticky top-4 z-50 backdrop-blur-md text-xs md:text-sm">
@@ -1749,199 +1743,214 @@ export default function Home() {
       )}
 
       {activeTab === 'competitions' && (
-        <div className="grid md:grid-cols-3 gap-6">
-          <section className="bg-slate-900/90 p-5 rounded-2xl border border-slate-800 space-y-3">
-            <h2 className="text-lg font-bold text-yellow-400 border-b border-slate-800 pb-2">
-              🏆 Tournaments ({competitions.length})
-            </h2>
-            <div className="space-y-2">
-              {competitions.length === 0 ? (
-                <p className="text-xs text-slate-500 p-2">No competitions created yet in Admin.</p>
-              ) : (
-                competitions.map((comp) => {
-                  const isSelected = comp.id === selectedCompId;
-                  const isTeamComp = comp.type === 'team';
-
-                  return (
-                    <div
-                      key={comp.id}
-                      onClick={() => setSelectedCompId(comp.id)}
-                      className={`p-3.5 rounded-xl border cursor-pointer transition ${
-                        isSelected
-                          ? 'bg-amber-500/10 border-amber-500/60 shadow-md'
-                          : 'bg-slate-950 border-slate-800 hover:border-slate-700'
-                      }`}
-                    >
-                      <div className="flex justify-between items-start mb-1">
-                        <span className={`text-xxs px-2 py-0.5 rounded font-bold ${
-                          isTeamComp ? 'bg-purple-500/20 text-purple-300 border border-purple-500/30' : 'bg-cyan-500/20 text-cyan-300 border border-cyan-500/30'
-                        }`}>
-                          {isTeamComp ? '🛡️ Team Event' : '👤 Solo Event'}
-                        </span>
-                        <span className="text-xxs text-slate-400">{getSportEmoji(comp.sport)} {comp.sport}</span>
-                      </div>
-                      <h3 className="font-bold text-sm text-white">{comp.title}</h3>
-                    </div>
-                  );
-                })
-              )}
+        <div className="space-y-6">
+          <div className="bg-slate-900/90 p-4 rounded-2xl border border-amber-500/30 flex flex-col sm:flex-row justify-between items-center gap-4">
+            <div>
+              <h3 className="text-lg font-bold text-amber-300">🥊 Live Tournament Brackets</h3>
+              <p className="text-xs text-slate-400">View real-time interactive playoff brackets, quarter-finals, and finals.</p>
             </div>
-          </section>
+            <Link
+              href="/knockout"
+              className="px-5 py-2.5 bg-amber-500 hover:bg-amber-400 text-slate-950 font-black rounded-xl shadow-lg transition text-xs whitespace-nowrap"
+            >
+              🏆 View Knockout Brackets →
+            </Link>
+          </div>
 
-          <section className="md:col-span-2 bg-slate-900/90 p-6 rounded-2xl border border-slate-800 space-y-6">
-            {selectedComp ? (
-              <>
-                <div className="flex flex-col md:flex-row justify-between items-start md:items-center border-b border-slate-800 pb-4 gap-3">
-                  <div>
-                    <span className={`text-xs px-2.5 py-0.5 rounded font-bold uppercase ${
-                      selectedComp.type === 'team' ? 'bg-purple-500/20 text-purple-300' : 'bg-cyan-500/20 text-cyan-300'
-                    }`}>
-                      {selectedComp.type === 'team' ? 'Team Competition' : 'Individual Solo Tournament'}
-                    </span>
-                    <h2 className="text-2xl font-bold text-white mt-1">{selectedComp.title}</h2>
-                    <p className="text-xs text-slate-400">{selectedComp.description}</p>
-                  </div>
+          <div className="grid md:grid-cols-3 gap-6">
+            <section className="bg-slate-900/90 p-5 rounded-2xl border border-slate-800 space-y-3">
+              <h2 className="text-lg font-bold text-yellow-400 border-b border-slate-800 pb-2">
+                🏆 Tournaments ({competitions.length})
+              </h2>
+              <div className="space-y-2">
+                {competitions.length === 0 ? (
+                  <p className="text-xs text-slate-500 p-2">No competitions created yet in Admin.</p>
+                ) : (
+                  competitions.map((comp) => {
+                    const isSelected = comp.id === selectedCompId;
+                    const isTeamComp = comp.type === 'team';
 
-                  <div>
-                    {selectedComp.type === 'individual' ? (
-                      (() => {
-                        const myReg = selectedCompParticipants.find((p) => p.student_id === currentStudent?.id);
-                        return myReg ? (
-                          <button
-                            onClick={() => handleLeaveIndividualComp(myReg.id)}
-                            className="bg-rose-600/80 hover:bg-rose-600 text-white font-bold text-xs px-4 py-2 rounded-lg transition"
-                          >
-                            Sign Out of Competition
-                          </button>
-                        ) : (
-                          <button
-                            onClick={() => handleJoinIndividualComp(selectedComp.id)}
-                            className="bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs px-4 py-2 rounded-lg transition"
-                          >
-                            + Join Competition
-                          </button>
-                        );
-                      })()
-                    ) : (
-                      <div className="space-y-2 text-right">
-                        <div className="flex gap-2">
-                          <select
-                            value={teamToRegisterId}
-                            onChange={(e) => setTeamToRegisterId(e.target.value)}
-                            className="bg-slate-950 border border-slate-700 text-xs rounded p-2 text-white"
-                          >
-                            <option value="">Select your created team...</option>
-                            {myCreatedTeams.map((t) => (
-                              <option key={t.id} value={t.id}>{t.logo_url} {t.team_name || t.name}</option>
-                            ))}
-                          </select>
-                          <button
-                            onClick={() => handleJoinTeamComp(selectedComp.id)}
-                            className="bg-purple-600 hover:bg-purple-500 text-white font-bold text-xs px-3 py-2 rounded transition"
-                          >
-                            Register Team
-                          </button>
+                    return (
+                      <div
+                        key={comp.id}
+                        onClick={() => setSelectedCompId(comp.id)}
+                        className={`p-3.5 rounded-xl border cursor-pointer transition ${
+                          isSelected
+                            ? 'bg-amber-500/10 border-amber-500/60 shadow-md'
+                            : 'bg-slate-950 border-slate-800 hover:border-slate-700'
+                        }`}
+                      >
+                        <div className="flex justify-between items-start mb-1">
+                          <span className={`text-xxs px-2 py-0.5 rounded font-bold ${
+                            isTeamComp ? 'bg-purple-500/20 text-purple-300 border border-purple-500/30' : 'bg-cyan-500/20 text-cyan-300 border border-cyan-500/30'
+                          }`}>
+                            {isTeamComp ? '🛡️ Team Event' : '👤 Solo Event'}
+                          </span>
+                          <span className="text-xxs text-slate-400">{getSportEmoji(comp.sport)} {comp.sport}</span>
                         </div>
-                        <span className="text-xxs text-slate-500 block">Must be Team Captain to register</span>
+                        <h3 className="font-bold text-sm text-white">{comp.title}</h3>
                       </div>
-                    )}
+                    );
+                  })
+                )}
+              </div>
+            </section>
+
+            <section className="md:col-span-2 bg-slate-900/90 p-6 rounded-2xl border border-slate-800 space-y-6">
+              {selectedComp ? (
+                <>
+                  <div className="flex flex-col md:flex-row justify-between items-start md:items-center border-b border-slate-800 pb-4 gap-3">
+                    <div>
+                      <span className={`text-xs px-2.5 py-0.5 rounded font-bold uppercase ${
+                        selectedComp.type === 'team' ? 'bg-purple-500/20 text-purple-300' : 'bg-cyan-500/20 text-cyan-300'
+                      }`}>
+                        {selectedComp.type === 'team' ? 'Team Competition' : 'Individual Solo Tournament'}
+                      </span>
+                      <h2 className="text-2xl font-bold text-white mt-1">{selectedComp.title}</h2>
+                      <p className="text-xs text-slate-400">{selectedComp.description}</p>
+                    </div>
+
+                    <div>
+                      {selectedComp.type === 'individual' ? (
+                        (() => {
+                          const myReg = selectedCompParticipants.find((p) => p.student_id === currentStudent?.id);
+                          return myReg ? (
+                            <button
+                              onClick={() => handleLeaveIndividualComp(myReg.id)}
+                              className="bg-rose-600/80 hover:bg-rose-600 text-white font-bold text-xs px-4 py-2 rounded-lg transition"
+                            >
+                              Sign Out of Competition
+                            </button>
+                          ) : (
+                            <button
+                              onClick={() => handleJoinIndividualComp(selectedComp.id)}
+                              className="bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs px-4 py-2 rounded-lg transition"
+                            >
+                              + Join Competition
+                            </button>
+                          );
+                        })()
+                      ) : (
+                        <div className="space-y-2 text-right">
+                          <div className="flex gap-2">
+                            <select
+                              value={teamToRegisterId}
+                              onChange={(e) => setTeamToRegisterId(e.target.value)}
+                              className="bg-slate-950 border border-slate-700 text-xs rounded p-2 text-white"
+                            >
+                              <option value="">Select your created team...</option>
+                              {myCreatedTeams.map((t) => (
+                                <option key={t.id} value={t.id}>{t.logo_url} {t.team_name || t.name}</option>
+                              ))}
+                            </select>
+                            <button
+                              onClick={() => handleJoinTeamComp(selectedComp.id)}
+                              className="bg-purple-600 hover:bg-purple-500 text-white font-bold text-xs px-3 py-2 rounded transition"
+                            >
+                              Register Team
+                            </button>
+                          </div>
+                          <span className="text-xxs text-slate-500 block">Must be Team Captain to register</span>
+                        </div>
+                      )}
+                    </div>
                   </div>
-                </div>
 
-                <div className="space-y-3">
-                  <h3 className="font-bold text-amber-400 text-sm flex items-center gap-1.5">
-                    🏆 Competition Leaderboard & Scoreboard
-                  </h3>
+                  <div className="space-y-3">
+                    <h3 className="font-bold text-amber-400 text-sm flex items-center gap-1.5">
+                      🏆 Competition Leaderboard & Scoreboard
+                    </h3>
 
-                  <div className="overflow-x-auto bg-slate-950 rounded-xl border border-slate-800">
-                    <table className="w-full text-left text-xs">
-                      <thead>
-                        <tr className="border-b border-slate-800 text-slate-400">
-                          <th className="p-3">Rank</th>
-                          <th className="p-3">
-                            {selectedComp.type === 'team' ? 'Registered Team' : 'Participant Student'}
-                          </th>
-                          <th className="p-3">
-                            {selectedComp.type === 'team' ? 'Captain / Details' : 'Class / Grade'}
-                          </th>
-                          <th className="p-3">Score / Standing</th>
-                          <th className="p-3">Action</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {selectedCompParticipants.length === 0 ? (
-                          <tr>
-                            <td colSpan="5" className="p-4 text-center text-slate-500">
-                              No participants registered in this competition yet.
-                            </td>
+                    <div className="overflow-x-auto bg-slate-950 rounded-xl border border-slate-800">
+                      <table className="w-full text-left text-xs">
+                        <thead>
+                          <tr className="border-b border-slate-800 text-slate-400">
+                            <th className="p-3">Rank</th>
+                            <th className="p-3">
+                              {selectedComp.type === 'team' ? 'Registered Team' : 'Participant Student'}
+                            </th>
+                            <th className="p-3">
+                              {selectedComp.type === 'team' ? 'Captain / Details' : 'Class / Grade'}
+                            </th>
+                            <th className="p-3">Score / Standing</th>
+                            <th className="p-3">Action</th>
                           </tr>
-                        ) : (
-                          selectedCompParticipants.map((part, idx) => {
-                            if (selectedComp.type === 'team') {
-                              const teamObj = teams.find((t) => t.id === part.team_id);
-                              const captainObj = students.find((s) => s.id === teamObj?.captain_id);
-                              const isMyTeam = teamObj?.captain_id === currentStudent?.id;
+                        </thead>
+                        <tbody>
+                          {selectedCompParticipants.length === 0 ? (
+                            <tr>
+                              <td colSpan="5" className="p-4 text-center text-slate-500">
+                                No participants registered in this competition yet.
+                              </td>
+                            </tr>
+                          ) : (
+                            selectedCompParticipants.map((part, idx) => {
+                              if (selectedComp.type === 'team') {
+                                const teamObj = teams.find((t) => t.id === part.team_id);
+                                const captainObj = students.find((s) => s.id === teamObj?.captain_id);
+                                const isMyTeam = teamObj?.captain_id === currentStudent?.id;
 
-                              return (
-                                <tr key={part.id} className="border-b border-slate-800/50 hover:bg-slate-900/50">
-                                  <td className="p-3 font-bold text-slate-400">#{idx + 1}</td>
-                                  <td className="p-3 font-bold text-white flex items-center gap-1.5">
-                                    <TeamLogo logo={teamObj?.logo_url} /> {teamObj?.team_name || teamObj?.name || 'Team'}
-                                  </td>
-                                  <td className="p-3 text-slate-400">
-                                    Captain: {captainObj?.full_name || 'Student'} ({captainObj?.class_name})
-                                  </td>
-                                  <td className="p-3 text-amber-400 font-bold">{part.score || 0} pts</td>
-                                  <td className="p-3">
-                                    {isMyTeam && (
-                                      <button
-                                        onClick={() => handleLeaveTeamComp(part.id)}
-                                        className="text-red-400 hover:underline text-xxs"
-                                      >
-                                        Withdraw Team
-                                      </button>
-                                    )}
-                                  </td>
-                                </tr>
-                              );
-                            } else {
-                              const studentObj = students.find((s) => s.id === part.student_id);
-                              const isMe = studentObj?.id === currentStudent?.id;
+                                return (
+                                  <tr key={part.id} className="border-b border-slate-800/50 hover:bg-slate-900/50">
+                                    <td className="p-3 font-bold text-slate-400">#{idx + 1}</td>
+                                    <td className="p-3 font-bold text-white flex items-center gap-1.5">
+                                      <TeamLogo logo={teamObj?.logo_url} /> {teamObj?.team_name || teamObj?.name || 'Team'}
+                                    </td>
+                                    <td className="p-3 text-slate-400">
+                                      Captain: {captainObj?.full_name || 'Student'} ({captainObj?.class_name})
+                                    </td>
+                                    <td className="p-3 text-amber-400 font-bold">{part.score || 0} pts</td>
+                                    <td className="p-3">
+                                      {isMyTeam && (
+                                        <button
+                                          onClick={() => handleLeaveTeamComp(part.id)}
+                                          className="text-red-400 hover:underline text-xxs"
+                                        >
+                                          Withdraw Team
+                                        </button>
+                                      )}
+                                    </td>
+                                  </tr>
+                                );
+                              } else {
+                                const studentObj = students.find((s) => s.id === part.student_id);
+                                const isMe = studentObj?.id === currentStudent?.id;
 
-                              return (
-                                <tr key={part.id} className="border-b border-slate-800/50 hover:bg-slate-900/50">
-                                  <td className="p-3 font-bold text-slate-400">#{idx + 1}</td>
-                                  <td className="p-3 font-bold text-white">
-                                    👤 {studentObj?.full_name || 'Student'}
-                                  </td>
-                                  <td className="p-3 text-slate-400">
-                                    {studentObj?.class_name} ({studentObj?.grade})
-                                  </td>
-                                  <td className="p-3 text-amber-400 font-bold">{part.score || 0} pts</td>
-                                  <td className="p-3">
-                                    {isMe && (
-                                      <button
-                                        onClick={() => handleLeaveIndividualComp(part.id)}
-                                        className="text-red-400 hover:underline text-xxs"
-                                      >
-                                        Sign Out
-                                      </button>
-                                    )}
-                                  </td>
-                                </tr>
-                              );
-                            }
-                          })
-                        )}
-                      </tbody>
-                    </table>
+                                return (
+                                  <tr key={part.id} className="border-b border-slate-800/50 hover:bg-slate-900/50">
+                                    <td className="p-3 font-bold text-slate-400">#{idx + 1}</td>
+                                    <td className="p-3 font-bold text-white">
+                                      👤 {studentObj?.full_name || 'Student'}
+                                    </td>
+                                    <td className="p-3 text-slate-400">
+                                      {studentObj?.class_name} ({studentObj?.grade})
+                                    </td>
+                                    <td className="p-3 text-amber-400 font-bold">{part.score || 0} pts</td>
+                                    <td className="p-3">
+                                      {isMe && (
+                                        <button
+                                          onClick={() => handleLeaveIndividualComp(part.id)}
+                                          className="text-red-400 hover:underline text-xxs"
+                                        >
+                                          Sign Out
+                                        </button>
+                                      )}
+                                    </td>
+                                  </tr>
+                                );
+                              }
+                            })
+                          )}
+                        </tbody>
+                      </table>
+                    </div>
                   </div>
-                </div>
-              </>
-            ) : (
-              <p className="text-xs text-slate-500">Select a competition to view details.</p>
-            )}
-          </section>
+                </>
+              ) : (
+                <p className="text-xs text-slate-500">Select a competition to view details.</p>
+              )}
+            </section>
+          </div>
         </div>
       )}
 
