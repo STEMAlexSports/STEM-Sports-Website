@@ -8,17 +8,9 @@ const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBh
 
 const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
-const DEFAULT_SPORTS = [
-  { id: '1', name: 'Football', emoji: '⚽' },
-  { id: '2', name: 'Basketball', emoji: '🏀' },
-  { id: '3', name: 'Volleyball', emoji: '🏐' },
-  { id: '4', name: 'Chess', emoji: '♟️' },
-  { id: '5', name: 'E-Sports', emoji: '🎮' },
-  { id: '6', name: 'Handball', emoji: '🤾' },
-];
-
 const SPORT_CONFIGS = {
   Football: {
+    emoji: '⚽',
     theme: 'from-emerald-950 via-slate-950 to-slate-950 border-emerald-500/30',
     cardBg: 'bg-emerald-950/40 border-emerald-500/30',
     accentText: 'text-emerald-400',
@@ -26,6 +18,7 @@ const SPORT_CONFIGS = {
     musicTitle: '⚽ Football Stadium Anthem'
   },
   Basketball: {
+    emoji: '🏀',
     theme: 'from-orange-950 via-slate-950 to-slate-950 border-orange-500/30',
     cardBg: 'bg-orange-950/40 border-orange-500/30',
     accentText: 'text-orange-400',
@@ -33,13 +26,15 @@ const SPORT_CONFIGS = {
     musicTitle: '🏀 Court Hip-Hop Beat'
   },
   Volleyball: {
+    emoji: '🏐',
     theme: 'from-cyan-950 via-slate-950 to-slate-950 border-cyan-500/30',
     cardBg: 'bg-cyan-950/40 border-cyan-500/30',
     accentText: 'text-cyan-400',
     musicUrl: 'https://cdn.pixabay.com/download/audio/2022/03/15/audio_c8c8a1e3b1.mp3?filename=summer-beach-vibes-11883.mp3',
-    musicTitle: '🏐 Arena Beach Groove'
+    musicTitle: '🏐 Arena Groove'
   },
   Chess: {
+    emoji: '♟️',
     theme: 'from-amber-950 via-slate-950 to-slate-950 border-amber-500/30',
     cardBg: 'bg-amber-950/40 border-amber-500/30',
     accentText: 'text-amber-300',
@@ -47,6 +42,7 @@ const SPORT_CONFIGS = {
     musicTitle: '♟️ Orchestral Strategy Theme'
   },
   'E-Sports': {
+    emoji: '🎮',
     theme: 'from-purple-950 via-slate-950 to-slate-950 border-purple-500/30',
     cardBg: 'bg-purple-950/40 border-purple-500/30',
     accentText: 'text-fuchsia-400',
@@ -54,6 +50,7 @@ const SPORT_CONFIGS = {
     musicTitle: '🎮 Cyberpunk Synthwave'
   },
   Handball: {
+    emoji: '🤾',
     theme: 'from-rose-950 via-slate-950 to-slate-950 border-rose-500/30',
     cardBg: 'bg-rose-950/40 border-rose-500/30',
     accentText: 'text-rose-400',
@@ -63,6 +60,7 @@ const SPORT_CONFIGS = {
 };
 
 const DEFAULT_CONFIG = {
+  emoji: '🏆',
   theme: 'from-blue-950 via-slate-950 to-slate-950 border-blue-500/30',
   cardBg: 'bg-slate-900/80 border-slate-800',
   accentText: 'text-cyan-400',
@@ -71,43 +69,41 @@ const DEFAULT_CONFIG = {
 };
 
 export default function KnockoutPage() {
-  const [sportsList, setSportsList] = useState(DEFAULT_SPORTS);
-  const [activeSport, setActiveSport] = useState('Football');
+  const [competitions, setCompetitions] = useState([]);
+  const [selectedCompId, setSelectedCompId] = useState('');
   const [teams, setTeams] = useState([]);
   const [knockoutMatches, setKnockoutMatches] = useState([]);
 
-  const [isPlaying, setIsPlaying] = useState(true);
+  const [isPlaying, setIsPlaying] = useState(false);
   const audioRef = useRef(null);
 
   useEffect(() => {
     fetchData();
   }, []);
 
-  // Autoplay music when active sport changes or page loads
+  const selectedComp = competitions.find(c => c.id === selectedCompId) || competitions[0];
+  const activeSport = selectedComp?.sport || 'Football';
+  const sportConfig = SPORT_CONFIGS[activeSport] || DEFAULT_CONFIG;
+
   useEffect(() => {
     if (audioRef.current) {
       audioRef.current.pause();
       audioRef.current.load();
       if (isPlaying) {
-        audioRef.current.play().catch(() => {
-          // If browser policy blocks autoplay before user interaction
-          setIsPlaying(false);
-        });
+        audioRef.current.play().catch(() => setIsPlaying(false));
       }
     }
   }, [activeSport]);
 
   async function fetchData() {
-    const { data: sportsData } = await supabase.from('sports').select('*').order('name');
+    const { data: compData } = await supabase.from('competitions').select('*').order('created_at', { ascending: false });
     const { data: teamsData } = await supabase.from('teams').select('*');
     const { data: kmData } = await supabase.from('knockout_matches').select('*');
 
-    if (sportsData && sportsData.length > 0) {
-      setSportsList(sportsData);
-    } else {
-      setSportsList(DEFAULT_SPORTS);
+    if (compData && compData.length > 0) {
+      setCompetitions(compData);
+      setSelectedCompId(compData[0].id);
     }
-
     if (teamsData) setTeams(teamsData);
     if (kmData) setKnockoutMatches(kmData);
   }
@@ -122,10 +118,18 @@ export default function KnockoutPage() {
     }
   };
 
-  const sportConfig = SPORT_CONFIGS[activeSport] || DEFAULT_CONFIG;
+  const handleSelectCompetition = (compId) => {
+    setSelectedCompId(compId);
+    // Auto-attempt play on user interaction
+    if (!isPlaying && audioRef.current) {
+      audioRef.current.play().then(() => setIsPlaying(true)).catch(() => {});
+    }
+  };
 
   const getMatch = (key) => {
-    return knockoutMatches.find((m) => m.sport === activeSport && m.match_key === key) || {};
+    return knockoutMatches.find(
+      (m) => (selectedCompId ? m.competition_id === selectedCompId : m.sport === activeSport) && m.match_key === key
+    ) || {};
   };
 
   const renderTeamSlot = (teamId, winnerId) => {
@@ -192,60 +196,78 @@ export default function KnockoutPage() {
   const championTeam = teams.find((t) => t.id === finalMatch.winner_id);
 
   return (
-    <div dir="ltr" className={`min-h-screen bg-gradient-to-b ${sportConfig.theme} text-slate-100 p-4 md:p-8 space-y-8 transition-colors duration-700 text-left`}>
-      <audio ref={audioRef} src={sportConfig.musicUrl} autoPlay loop />
+    <div className={`min-h-screen bg-gradient-to-b ${sportConfig.theme} text-slate-100 p-4 md:p-8 space-y-8 transition-colors duration-700`}>
+      {/* Audio element with preload="none" for instant page loading */}
+      <audio ref={audioRef} src={sportConfig.musicUrl} preload="none" loop />
 
       {/* Header */}
       <div className="max-w-7xl mx-auto flex flex-col md:flex-row justify-between items-center gap-4 border-b border-slate-800/80 pb-6">
         <div>
           <span className="px-3 py-1 rounded-full text-xs font-bold bg-amber-500/20 text-amber-300 border border-amber-500/30 inline-block mb-2">
-            🏆 STEM High School Championship Stage
+            🏆 STEM High School Championships
           </span>
-          <h1 className="text-3xl md:text-5xl font-black tracking-tight text-white">
-            Knockout Stage Bracket
+          <h1 className="text-3xl md:text-5xl font-black tracking-tight text-white flex items-center gap-3">
+            <span>{selectedComp ? selectedComp.title : 'Tournament Bracket'}</span>
           </h1>
+          {selectedComp && (
+            <p className="text-xs font-bold text-amber-400 mt-1 flex items-center gap-2">
+              <span>{sportConfig.emoji} Official Sport: <strong>{activeSport}</strong></span>
+              {selectedComp.description && <span className="text-slate-400">({selectedComp.description})</span>}
+            </p>
+          )}
         </div>
 
         <div className="flex items-center gap-3">
           <button
             onClick={toggleMusic}
-            className={`px-4 py-2 rounded-xl text-xs font-bold border transition flex items-center gap-2 ${
+            className={`px-4 py-2.5 rounded-xl text-xs font-bold border transition flex items-center gap-2 ${
               isPlaying
-                ? 'bg-emerald-600 border-emerald-500 text-white animate-pulse shadow-lg shadow-emerald-500/30'
+                ? 'bg-emerald-600 border-emerald-500 text-white shadow-lg shadow-emerald-500/30'
                 : 'bg-slate-900 border-slate-700 text-slate-300 hover:text-white'
             }`}
           >
-            {isPlaying ? '🔊 Stop Music' : '🔇 Play Sport Music'}
-            <span className="text-xxs text-slate-300 opacity-80">({sportConfig.musicTitle})</span>
+            {isPlaying ? '🔊 Music Playing (Click to Mute)' : '🔇 Enable Sport Music'}
           </button>
 
           <a
             href="/"
-            className="px-4 py-2 bg-slate-900 hover:bg-slate-800 text-slate-300 text-xs font-bold rounded-xl border border-slate-800 transition"
+            className="px-4 py-2.5 bg-slate-900 hover:bg-slate-800 text-slate-300 text-xs font-bold rounded-xl border border-slate-800 transition"
           >
             ← Back Home
           </a>
         </div>
       </div>
 
-      {/* Sport Tabs Bar - ALWAYS Visible */}
-      <div className="max-w-7xl mx-auto flex flex-wrap justify-center gap-2">
-        {sportsList.map((sport) => {
-          const isActive = sport.name === activeSport;
-          return (
-            <button
-              key={sport.id || sport.name}
-              onClick={() => setActiveSport(sport.name)}
-              className={`px-5 py-2.5 rounded-2xl text-xs font-bold transition duration-300 ${
-                isActive
-                  ? 'bg-white text-slate-950 font-black shadow-lg scale-105'
-                  : 'bg-slate-900/80 text-slate-400 hover:text-white border border-slate-800'
-              }`}
-            >
-              {sport.emoji} {sport.name}
-            </button>
-          );
-        })}
+      {/* Competition Selection Tabs */}
+      <div className="max-w-7xl mx-auto space-y-2">
+        <div className="text-center text-xs font-bold text-slate-400 uppercase tracking-widest">
+          Select Competition To View Bracket & Theme:
+        </div>
+        <div className="flex flex-wrap justify-center gap-2">
+          {competitions.length === 0 && (
+            <div className="text-xs text-slate-500 bg-slate-900 p-3 rounded-xl">
+              No competitions created yet. Create one in the Admin dashboard!
+            </div>
+          )}
+          {competitions.map((comp) => {
+            const isActive = comp.id === selectedCompId;
+            const compSportConfig = SPORT_CONFIGS[comp.sport] || DEFAULT_CONFIG;
+
+            return (
+              <button
+                key={comp.id}
+                onClick={() => handleSelectCompetition(comp.id)}
+                className={`px-5 py-2.5 rounded-2xl text-xs font-bold transition duration-300 ${
+                  isActive
+                    ? 'bg-white text-slate-950 font-black shadow-lg scale-105'
+                    : 'bg-slate-900/80 text-slate-400 hover:text-white border border-slate-800'
+                }`}
+              >
+                {compSportConfig.emoji} {comp.title} ({comp.sport})
+              </button>
+            );
+          })}
+        </div>
       </div>
 
       {/* Champion Banner */}
@@ -253,7 +275,7 @@ export default function KnockoutPage() {
         <div className="max-w-lg mx-auto bg-gradient-to-r from-amber-500/20 via-yellow-500/30 to-amber-500/20 border-2 border-amber-400 p-6 rounded-3xl text-center space-y-2 shadow-2xl animate-bounce">
           <span className="text-4xl block">👑</span>
           <span className="text-xs uppercase font-extrabold text-amber-300 tracking-widest block">
-            {activeSport} Official Champions
+            {selectedComp?.title} Official Champions
           </span>
           <h2 className="text-3xl font-black text-white flex items-center justify-center gap-2">
             {championTeam.logo_url?.startsWith('http') ? (
