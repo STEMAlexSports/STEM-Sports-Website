@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
+import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { createClient } from '@supabase/supabase-js';
 
@@ -624,12 +625,12 @@ export default function AdminPage() {
           <p className="text-slate-400 text-sm mt-1">Manage scores, sports, teams, competitions, equipment goals & donations.</p>
         </div>
         <div className="flex gap-2">
-          <a href="/knockout" className="px-4 py-2 bg-amber-500 hover:bg-amber-400 text-slate-950 text-sm font-black rounded-lg transition shadow-lg">
+          <Link href="/knockout" className="px-4 py-2 bg-amber-500 hover:bg-amber-400 text-slate-950 text-sm font-black rounded-lg transition shadow-lg">
             🏆 Knockout Page →
-          </a>
-          <a href="/" className="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-slate-200 text-sm font-semibold rounded-lg border border-slate-700 transition">
+          </Link>
+          <Link href="/" className="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-slate-200 text-sm font-semibold rounded-lg border border-slate-700 transition">
             &larr; Back to Home
-          </a>
+          </Link>
         </div>
       </div>
 
@@ -1037,7 +1038,6 @@ export default function AdminPage() {
         {activeTab === 'teams' && (
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
             <div className="space-y-6">
-              {/* Add Team */}
               <div className="bg-slate-900 border border-slate-800 rounded-xl p-6 shadow-xl">
                 <h2 className="text-xl font-bold text-white mb-4">🛡️ Add New Team</h2>
                 <form onSubmit={handleCreateTeam} className="space-y-4">
@@ -1083,7 +1083,6 @@ export default function AdminPage() {
                 </form>
               </div>
 
-              {/* Manage Sports Panel */}
               <div className="bg-slate-900 border border-slate-800 rounded-xl p-6 shadow-xl space-y-4">
                 <h2 className="text-xl font-bold text-white">⚽ Manage Sports Database</h2>
                 <form onSubmit={handleAddSport} className="flex gap-2">
@@ -1221,7 +1220,7 @@ export default function AdminPage() {
             </div>
 
             <div className="lg:col-span-2 bg-slate-900 border border-slate-800 rounded-xl p-6 shadow-xl">
-              <h2 className="text-xl font-bold text-white mb-4">Competitions List</h2>
+              <h2 className="text-xl font-bold text-white mb-4">Competitions List ({competitions.length})</h2>
               <div className="overflow-x-auto">
                 <table className="w-full text-left border-collapse">
                   <thead>
@@ -1233,25 +1232,31 @@ export default function AdminPage() {
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-800 text-sm">
-                    {competitions.map((comp) => (
-                      <tr key={comp.id} className="hover:bg-slate-800/50 transition">
-                        <td className="py-3 px-4 font-bold text-white">{comp.title}</td>
-                        <td className="py-3 px-4 text-slate-300 text-xs">{comp.sport}</td>
-                        <td className="py-3 px-4">
-                          <span className="px-2 py-0.5 text-xs font-semibold rounded bg-purple-500/20 text-purple-300">
-                            {comp.type}
-                          </span>
-                        </td>
-                        <td className="py-3 px-4 text-right">
-                          <button
-                            onClick={() => handleDeleteCompetition(comp.id, comp.title)}
-                            className="px-2.5 py-1 bg-rose-600/20 hover:bg-rose-600 text-rose-400 hover:text-white text-xs font-semibold rounded transition"
-                          >
-                            Delete 🗑️
-                          </button>
-                        </td>
+                    {competitions.length === 0 ? (
+                      <tr>
+                        <td colSpan="4" className="p-4 text-center text-slate-500">No competitions created yet.</td>
                       </tr>
-                    ))}
+                    ) : (
+                      competitions.map((comp) => (
+                        <tr key={comp.id} className="hover:bg-slate-800/50 transition">
+                          <td className="py-3 px-4 font-bold text-white">{comp.title}</td>
+                          <td className="py-3 px-4 text-slate-300 text-xs">{comp.sport}</td>
+                          <td className="py-3 px-4">
+                            <span className="px-2 py-0.5 text-xs font-semibold rounded bg-purple-500/20 text-purple-300">
+                              {comp.type}
+                            </span>
+                          </td>
+                          <td className="py-3 px-4 text-right">
+                            <button
+                              onClick={() => handleDeleteCompetition(comp.id, comp.title)}
+                              className="px-2.5 py-1 bg-rose-600/20 hover:bg-rose-600 text-rose-400 hover:text-white text-xs font-semibold rounded transition"
+                            >
+                              Delete 🗑️
+                            </button>
+                          </td>
+                        </tr>
+                      ))
+                    )}
                   </tbody>
                 </table>
               </div>
