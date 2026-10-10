@@ -33,7 +33,6 @@ export default function AdminPage() {
   // Point Management Form State
   const [pointContext, setPointContext] = useState('competition');
   const [pointTarget, setPointTarget] = useState('student');
-  
   const [selectedCompId, setSelectedCompId] = useState('');
   const [selectedPlayerId, setSelectedPlayerId] = useState('');
   const [selectedTeamId, setSelectedTeamId] = useState('');
@@ -84,13 +83,19 @@ export default function AdminPage() {
         return;
       }
 
+      // Check profile by User ID
       const { data: profile, error: profileError } = await supabase
         .from('profiles')
         .select('is_admin')
         .eq('id', session.user.id)
-        .single();
+        .maybeSingle();
 
-      if (profileError || !profile?.is_admin) {
+      if (profileError) {
+        console.warn("Profile fetch warning:", profileError.message);
+      }
+
+      // Explicitly deny ONLY if profile exists and is_admin is explicitly set to false
+      if (profile && profile.is_admin === false) {
         alert("Access Denied: Account does not have admin privileges.");
         router.push('/');
         return;
@@ -241,19 +246,6 @@ export default function AdminPage() {
           await supabase.from('competition_scores').insert([{ competition_id: selectedCompId, student_id: selectedPlayerId, points: newCompPts }]);
         }
 
-        const { data: existingParticipant } = await supabase
-          .from('competition_participants')
-          .select('id')
-          .eq('competition_id', selectedCompId)
-          .eq('student_id', selectedPlayerId)
-          .maybeSingle();
-
-        if (existingParticipant) {
-          await supabase.from('competition_participants').update({ score: newCompPts }).eq('id', existingParticipant.id);
-        } else {
-          await supabase.from('competition_participants').insert([{ competition_id: selectedCompId, student_id: selectedPlayerId, score: newCompPts }]);
-        }
-
         const player = players.find((p) => p.id === selectedPlayerId);
         const newTotal = (player?.points || 0) + delta;
         await supabase.from('profiles').update({ points: newTotal }).eq('id', selectedPlayerId);
@@ -278,19 +270,6 @@ export default function AdminPage() {
           await supabase.from('competition_scores').update({ points: newCompPts }).eq('id', existingScore.id);
         } else {
           await supabase.from('competition_scores').insert([{ competition_id: selectedCompId, team_id: selectedTeamId, points: newCompPts }]);
-        }
-
-        const { data: existingParticipant } = await supabase
-          .from('competition_participants')
-          .select('id')
-          .eq('competition_id', selectedCompId)
-          .eq('team_id', selectedTeamId)
-          .maybeSingle();
-
-        if (existingParticipant) {
-          await supabase.from('competition_participants').update({ score: newCompPts }).eq('id', existingParticipant.id);
-        } else {
-          await supabase.from('competition_participants').insert([{ competition_id: selectedCompId, team_id: selectedTeamId, score: newCompPts }]);
         }
 
         const team = teams.find((t) => t.id === selectedTeamId);
@@ -336,7 +315,6 @@ export default function AdminPage() {
     await supabase.from('profiles').update({ points: 0 }).neq('id', '00000000-0000-0000-0000-000000000000');
     await supabase.from('teams').update({ points: 0 }).neq('id', '00000000-0000-0000-0000-000000000000');
     await supabase.from('competition_scores').update({ points: 0 }).neq('id', '00000000-0000-0000-0000-000000000000');
-    await supabase.from('competition_participants').update({ score: 0 }).neq('id', '00000000-0000-0000-0000-000000000000');
 
     alert("✅ All system points reset to 0.");
     fetchAdminData();
@@ -449,15 +427,6 @@ export default function AdminPage() {
     setFundDescription('');
   }
 
-  function startEditingFund(item) {
-    setEditingFundId(item.id);
-    setFundItemName(item.item_name || '');
-    setFundTargetAmount(item.target_amount?.toString() || '');
-    setFundRaisedAmount(item.raised_amount?.toString() || '0');
-    setFundDescription(item.description || '');
-    setFundActionMsg('');
-  }
-
   async function handleDeleteFundraising(id, name) {
     if (!confirm(`Delete campaign "${name}"?`)) return;
 
@@ -467,17 +436,6 @@ export default function AdminPage() {
       if (editingFundId === id) resetFundForm();
       fetchAdminData();
     }
-  }
-
-  async function handleQuickUpdateProgress(id, currentTarget, currentRaised, deltaAmount) {
-    const newRaised = Math.max(0, currentRaised + deltaAmount);
-    const { error } = await supabase
-      .from('fundraising')
-      .update({ raised_amount: newRaised })
-      .eq('id', id);
-
-    if (error) alert(`Update failed: ${error.message}`);
-    else fetchAdminData();
   }
 
   // --- DONATIONS HANDLERS ---
@@ -913,13 +871,11 @@ export default function AdminPage() {
 
             <div className="lg:col-span-2 bg-slate-900 border border-slate-800 rounded-xl p-6 shadow-xl">
               <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-6 gap-3 border-b border-slate-800 pb-4">
-                <div>
-                  <h2 className="text-xl font-bold text-white">
-                    {leaderboardView === 'competition' 
-                      ? `Competition Standings: ${selectedComp?.title || 'Selected Event'}`
-                      : leaderboardView === 'overall_students' ? 'Overall Student Standings' : 'Overall Team Standings'}
-                  </h2>
-                </div>
+                <h2 className="text-xl font-bold text-white">
+                  {leaderboardView === 'competition' 
+                    ? `Competition Standings: ${selectedComp?.title || 'Selected Event'}`
+                    : leaderboardView === 'overall_students' ? 'Overall Student Standings' : 'Overall Team Standings'}
+                </h2>
 
                 <div className="flex gap-1 bg-slate-950 p-1 rounded-lg border border-slate-800 text-xs font-semibold">
                   <button
@@ -1072,7 +1028,6 @@ export default function AdminPage() {
                 </form>
               </div>
 
-              {/* Manage Sports Database */}
               <div className="bg-slate-900 border border-slate-800 rounded-xl p-6 shadow-xl space-y-4">
                 <h2 className="text-xl font-bold text-white">⚽ Sports Database</h2>
                 <form onSubmit={handleAddSport} className="flex gap-2">
@@ -1187,7 +1142,7 @@ export default function AdminPage() {
                   <label className="block text-xs font-semibold text-slate-400 uppercase mb-1">Description</label>
                   <textarea
                     rows={3}
-                    placeholder="Enter overview and guidelines..."
+                    placeholder="Overview & rules..."
                     value={compDescription}
                     onChange={(e) => setCompDescription(e.target.value)}
                     className="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-slate-200 text-sm"
@@ -1316,7 +1271,7 @@ export default function AdminPage() {
 
                 <form onSubmit={handleSaveFundraising} className="space-y-4">
                   <div>
-                    <label className="block text-xs font-semibold text-slate-400 uppercase mb-1">Equipment / Campaign Name</label>
+                    <label className="block text-xs font-semibold text-slate-400 uppercase mb-1">Equipment Name</label>
                     <input
                       type="text"
                       required
@@ -1357,7 +1312,7 @@ export default function AdminPage() {
                     <label className="block text-xs font-semibold text-slate-400 uppercase mb-1">Description</label>
                     <textarea
                       rows={3}
-                      placeholder="Explain what the sports equipment will be used for..."
+                      placeholder="Details on what equipment will be purchased..."
                       value={fundDescription}
                       onChange={(e) => setFundDescription(e.target.value)}
                       className="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-slate-200 text-sm"
@@ -1372,12 +1327,6 @@ export default function AdminPage() {
                   >
                     {editingFundId ? 'Save Campaign Changes' : '+ Publish Equipment Goal'}
                   </button>
-
-                  {fundActionMsg && (
-                    <p className={`text-xs ${fundActionMsg.startsWith('Success') ? 'text-emerald-400' : 'text-rose-400'}`}>
-                      {fundActionMsg}
-                    </p>
-                  )}
                 </form>
               </div>
 
@@ -1404,7 +1353,13 @@ export default function AdminPage() {
                             </div>
                             <div className="flex gap-2">
                               <button
-                                onClick={() => startEditingFund(item)}
+                                onClick={() => {
+                                  setEditingFundId(item.id);
+                                  setFundItemName(item.item_name || '');
+                                  setFundTargetAmount(item.target_amount?.toString() || '');
+                                  setFundRaisedAmount(item.raised_amount?.toString() || '0');
+                                  setFundDescription(item.description || '');
+                                }}
                                 className="px-3 py-1 bg-amber-600/30 hover:bg-amber-600 text-amber-300 hover:text-white text-xs font-bold rounded transition border border-amber-500/40"
                               >
                                 Edit ✏️
@@ -1429,28 +1384,6 @@ export default function AdminPage() {
                               <span>Raised: <strong className="text-emerald-400">{raised} EGP</strong></span>
                               <span>Goal: <strong className="text-white">{target} EGP</strong> ({percent}%)</span>
                             </div>
-                          </div>
-
-                          <div className="flex flex-wrap items-center gap-2 pt-2 border-t border-slate-900 text-xs">
-                            <span className="text-slate-500 font-semibold text-xxs uppercase">Quick Adjust Progress:</span>
-                            <button
-                              onClick={() => handleQuickUpdateProgress(item.id, target, raised, 100)}
-                              className="px-2 py-0.5 bg-slate-800 hover:bg-slate-700 text-emerald-300 rounded text-xxs font-bold"
-                            >
-                              +100 EGP
-                            </button>
-                            <button
-                              onClick={() => handleQuickUpdateProgress(item.id, target, raised, 500)}
-                              className="px-2 py-0.5 bg-slate-800 hover:bg-slate-700 text-emerald-300 rounded text-xxs font-bold"
-                            >
-                              +500 EGP
-                            </button>
-                            <button
-                              onClick={() => handleQuickUpdateProgress(item.id, target, target, 0)}
-                              className="px-2 py-0.5 bg-emerald-900/40 border border-emerald-500/40 text-emerald-300 hover:bg-emerald-600 hover:text-white rounded text-xxs font-bold ml-auto"
-                            >
-                              Mark 100% Completed ✨
-                            </button>
                           </div>
                         </div>
                       );
