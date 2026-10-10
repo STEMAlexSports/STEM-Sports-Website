@@ -15,42 +15,42 @@ const SPORT_CONFIGS = {
     theme: 'from-emerald-950 via-slate-950 to-slate-950 border-emerald-500/30',
     cardBg: 'bg-emerald-950/40 border-emerald-500/30',
     accentText: 'text-emerald-400',
-    musicUrl: 'https://cdn.pixabay.com/download/audio/2022/05/27/audio_1808fbf07a.mp3?filename=stadium-rock-113884.mp3',
+    musicUrl: 'https://raw.githubusercontent.com/effacestudios/Royalty-Free-Music-Pack/master/Sports%20Spirit.mp3',
   },
   Basketball: {
     emoji: '🏀',
     theme: 'from-orange-950 via-slate-950 to-slate-950 border-orange-500/30',
     cardBg: 'bg-orange-950/40 border-orange-500/30',
     accentText: 'text-orange-400',
-    musicUrl: 'https://cdn.pixabay.com/download/audio/2022/01/18/audio_d0a13f69d2.mp3?filename=action-hip-hop-10903.mp3',
+    musicUrl: 'https://raw.githubusercontent.com/effacestudios/Royalty-Free-Music-Pack/master/The%20Champion.mp3',
   },
   Volleyball: {
     emoji: '🏐',
     theme: 'from-cyan-950 via-slate-950 to-slate-950 border-cyan-500/30',
     cardBg: 'bg-cyan-950/40 border-cyan-500/30',
     accentText: 'text-cyan-400',
-    musicUrl: 'https://cdn.pixabay.com/download/audio/2022/03/15/audio_c8c8a1e3b1.mp3?filename=summer-beach-vibes-11883.mp3',
+    musicUrl: 'https://raw.githubusercontent.com/effacestudios/Royalty-Free-Music-Pack/master/Party%20Time.mp3',
   },
   Chess: {
     emoji: '♟️',
     theme: 'from-amber-950 via-slate-950 to-slate-950 border-amber-500/30',
     cardBg: 'bg-amber-950/40 border-amber-500/30',
     accentText: 'text-amber-300',
-    musicUrl: 'https://cdn.pixabay.com/download/audio/2022/10/14/audio_99391d8481.mp3?filename=orchestral-epic-dark-124976.mp3',
+    musicUrl: 'https://raw.githubusercontent.com/effacestudios/Royalty-Free-Music-Pack/master/Cinemato.mp3',
   },
   'E-Sports': {
     emoji: '🎮',
     theme: 'from-purple-950 via-slate-950 to-slate-950 border-purple-500/30',
     cardBg: 'bg-purple-950/40 border-purple-500/30',
     accentText: 'text-fuchsia-400',
-    musicUrl: 'https://cdn.pixabay.com/download/audio/2022/03/10/audio_55a297e59b.mp3?filename=cyberpunk-2099-10701.mp3',
+    musicUrl: 'https://raw.githubusercontent.com/effacestudios/Royalty-Free-Music-Pack/master/Gamer%20Guy.mp3',
   },
   Handball: {
     emoji: '🤾',
     theme: 'from-rose-950 via-slate-950 to-slate-950 border-rose-500/30',
     cardBg: 'bg-rose-950/40 border-rose-500/30',
     accentText: 'text-rose-400',
-    musicUrl: 'https://cdn.pixabay.com/download/audio/2022/05/16/audio_db6539bfb1.mp3?filename=energetic-rock-112839.mp3',
+    musicUrl: 'https://raw.githubusercontent.com/effacestudios/Royalty-Free-Music-Pack/master/Fury.mp3',
   }
 };
 
@@ -59,8 +59,28 @@ const DEFAULT_CONFIG = {
   theme: 'from-blue-950 via-slate-950 to-slate-950 border-blue-500/30',
   cardBg: 'bg-slate-900/80 border-slate-800',
   accentText: 'text-cyan-400',
-  musicUrl: 'https://cdn.pixabay.com/download/audio/2022/05/27/audio_1808fbf07a.mp3?filename=stadium-rock-113884.mp3',
+  musicUrl: 'https://raw.githubusercontent.com/effacestudios/Royalty-Free-Music-Pack/master/The%20Champion.mp3',
 };
+
+function getSportConfig(sportName) {
+  if (!sportName) return DEFAULT_CONFIG;
+  const cleanName = sportName.trim().toLowerCase();
+
+  for (const key of Object.keys(SPORT_CONFIGS)) {
+    if (key.toLowerCase() === cleanName) {
+      return SPORT_CONFIGS[key];
+    }
+  }
+
+  if (cleanName.includes('foot') || cleanName.includes('soccer')) return SPORT_CONFIGS.Football;
+  if (cleanName.includes('basket')) return SPORT_CONFIGS.Basketball;
+  if (cleanName.includes('volley')) return SPORT_CONFIGS.Volleyball;
+  if (cleanName.includes('chess')) return SPORT_CONFIGS.Chess;
+  if (cleanName.includes('sport') || cleanName.includes('esport') || cleanName.includes('game')) return SPORT_CONFIGS['E-Sports'];
+  if (cleanName.includes('hand')) return SPORT_CONFIGS.Handball;
+
+  return DEFAULT_CONFIG;
+}
 
 export default function KnockoutPage() {
   const [competitions, setCompetitions] = useState([]);
@@ -89,17 +109,17 @@ export default function KnockoutPage() {
 
   const selectedComp = competitions.find(c => c.id === selectedCompId) || competitions[0];
   const activeSport = selectedComp?.sport || 'Football';
-  const sportConfig = SPORT_CONFIGS[activeSport] || DEFAULT_CONFIG;
+  const sportConfig = getSportConfig(activeSport);
 
   useEffect(() => {
     if (audioRef.current) {
       audioRef.current.pause();
       audioRef.current.load();
       if (isPlaying) {
-        audioRef.current.play().catch(() => setIsPlaying(false));
+        audioRef.current.play().catch((err) => console.log('Playback error:', err));
       }
     }
-  }, [activeSport]);
+  }, [selectedCompId, activeSport]);
 
   async function fetchData() {
     const { data: compData } = await supabase.from('competitions').select('*').order('created_at', { ascending: false });
@@ -260,7 +280,7 @@ export default function KnockoutPage() {
           )}
           {competitions.map((comp) => {
             const isActive = comp.id === selectedCompId;
-            const compSportConfig = SPORT_CONFIGS[comp.sport] || DEFAULT_CONFIG;
+            const compSportConfig = getSportConfig(comp.sport);
 
             return (
               <button
