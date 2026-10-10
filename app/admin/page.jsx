@@ -14,6 +14,7 @@ export default function AdminPage() {
   const [activeTab, setActiveTab] = useState('points');
 
   // Data States
+  const [sportsList, setSportsList] = useState([]);
   const [teams, setTeams] = useState([]);
   const [players, setPlayers] = useState([]);
   const [competitions, setCompetitions] = useState([]);
@@ -95,31 +96,39 @@ export default function AdminPage() {
   }, [router]);
 
   async function fetchAdminData() {
+    const { data: sportsData } = await supabase.from('sports').select('*').order('name', { ascending: true });
     const { data: teamsData } = await supabase.from('teams').select('*').order('points', { ascending: false });
+    const { data: playersData } = await supabase.from('profiles').select('*').order('points', { ascending: false });
+    const { data: compData } = await supabase.from('competitions').select('*').order('created_at', { ascending: false });
+    const { data: scoreData } = await supabase.from('competition_scores').select('*');
+    const { data: fundData } = await supabase.from('fundraising').select('*').order('created_at', { ascending: false });
+    const { data: donationData } = await supabase.from('donations').select('*, fundraising(item_name), profiles(full_name, email)').order('created_at', { ascending: false });
+
+    if (sportsData) {
+      setSportsList(sportsData);
+      if (sportsData.length > 0) {
+        if (!compSport) setCompSport(sportsData[0].name);
+        if (!newTeamSport) setNewTeamSport(sportsData[0].name);
+      }
+    }
+
     if (teamsData) {
       setTeams(teamsData);
       if (teamsData.length > 0 && !selectedTeamId) setSelectedTeamId(teamsData[0].id);
     }
 
-    const { data: playersData } = await supabase.from('profiles').select('*').order('points', { ascending: false });
     if (playersData) {
       setPlayers(playersData);
       if (playersData.length > 0 && !selectedPlayerId) setSelectedPlayerId(playersData[0].id);
     }
 
-    const { data: compData } = await supabase.from('competitions').select('*').order('created_at', { ascending: false });
     if (compData) {
       setCompetitions(compData);
       if (compData.length > 0 && !selectedCompId) setSelectedCompId(compData[0].id);
     }
 
-    const { data: scoreData } = await supabase.from('competition_scores').select('*');
     if (scoreData) setCompetitionScores(scoreData);
-
-    const { data: fundData } = await supabase.from('fundraising').select('*').order('created_at', { ascending: false });
     if (fundData) setFundraising(fundData);
-
-    const { data: donationData } = await supabase.from('donations').select('*, fundraising(item_name), profiles(full_name, email)').order('created_at', { ascending: false });
     if (donationData) setDonations(donationData);
   }
 
@@ -872,10 +881,11 @@ export default function AdminPage() {
                     onChange={(e) => setNewTeamSport(e.target.value)}
                     className="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-slate-200 text-sm"
                   >
-                    <option value="General">General</option>
-                    <option value="Football">Football</option>
-                    <option value="Volleyball">Volleyball</option>
-                    <option value="Basketball">Basketball</option>
+                    {sportsList.map((s) => (
+                      <option key={s.id} value={s.name}>
+                        {s.emoji} {s.name}
+                      </option>
+                    ))}
                   </select>
                 </div>
 
@@ -945,11 +955,11 @@ export default function AdminPage() {
                     onChange={(e) => setCompSport(e.target.value)}
                     className="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-slate-200 text-sm"
                   >
-                    <option value="Football">Football</option>
-                    <option value="Volleyball">Volleyball</option>
-                    <option value="Basketball">Basketball</option>
-                    <option value="Table Tennis">Table Tennis</option>
-                    <option value="Chess">Chess</option>
+                    {sportsList.map((s) => (
+                      <option key={s.id} value={s.name}>
+                        {s.emoji} {s.name}
+                      </option>
+                    ))}
                   </select>
                 </div>
 
