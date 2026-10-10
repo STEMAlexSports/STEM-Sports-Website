@@ -6,7 +6,7 @@ import { useRouter } from 'next/navigation';
 import { createClient } from '@supabase/supabase-js';
 
 const SUPABASE_URL = "https://agmumcfifdxwcydzpgqr.supabase.co";
-const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImFnbXVtY2ZpZmR4d2N5ZHpwZ3FyIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTEzODYzNjAsImV4cCI6MjE0Njk2MjM2MH0.ELpZRnnvULXqzteXCinGoZAY0Nrxau0-6qFb0vI2_iE";
+const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImFnbXVtY2ZpZmR4d2N5ZHpwZ3FyIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTEzODYzNjAsImV4cCI6MjEwNjk2MjM2MH0.ELpZRnnvULXqzteXCinGoZAY0Nrxau0-6qFb0vI2_iE";
 
 const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
@@ -14,7 +14,6 @@ export default function AdminPage() {
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState('points');
 
-  // Data States
   const [sportsList, setSportsList] = useState([]);
   const [teams, setTeams] = useState([]);
   const [players, setPlayers] = useState([]);
@@ -24,14 +23,11 @@ export default function AdminPage() {
   const [donations, setDonations] = useState([]);
   const [knockoutMatches, setKnockoutMatches] = useState([]);
 
-  // Sports CRUD Form State
   const [newSportName, setNewSportName] = useState('');
   const [newSportEmoji, setNewSportEmoji] = useState('🏆');
 
-  // Knockout Bracket State
   const [selectedCompIdForBracket, setSelectedCompIdForBracket] = useState('');
 
-  // Point Management Form State
   const [pointContext, setPointContext] = useState('competition');
   const [pointTarget, setPointTarget] = useState('student');
   
@@ -41,10 +37,8 @@ export default function AdminPage() {
   const [pointsToAdd, setPointsToAdd] = useState('');
   const [pointActionMsg, setPointActionMsg] = useState('');
 
-  // Leaderboard View State
   const [leaderboardView, setLeaderboardView] = useState('competition');
 
-  // Competition Form State
   const [compName, setCompName] = useState('');
   const [compSport, setCompSport] = useState('');
   const [compType, setCompType] = useState('team');
@@ -52,12 +46,10 @@ export default function AdminPage() {
   const [compDate, setCompDate] = useState('');
   const [compActionMsg, setCompActionMsg] = useState('');
 
-  // Team Form State
   const [newTeamName, setNewTeamName] = useState('');
   const [newTeamSport, setNewTeamSport] = useState('');
   const [teamActionMsg, setTeamActionMsg] = useState('');
 
-  // Fundraising Goal Form State
   const [editingFundId, setEditingFundId] = useState(null);
   const [fundItemName, setFundItemName] = useState('');
   const [fundTargetAmount, setFundTargetAmount] = useState('');
@@ -65,7 +57,6 @@ export default function AdminPage() {
   const [fundDescription, setFundDescription] = useState('');
   const [fundActionMsg, setFundActionMsg] = useState('');
 
-  // Manual Donation Entry State
   const [donorName, setDonorName] = useState('');
   const [donationAmount, setDonationAmount] = useState('');
   const [paymentMethod, setPaymentMethod] = useState('Vodafone Cash');
@@ -142,7 +133,6 @@ export default function AdminPage() {
     if (kmData) setKnockoutMatches(kmData);
   }
 
-  // --- KNOCKOUT BRACKET HANDLER ---
   async function handleUpdateBracketMatch(matchKey, team1Id, team2Id, winnerId) {
     const selectedComp = competitions.find(c => c.id === selectedCompIdForBracket);
     const sportName = selectedComp?.sport || 'Football';
@@ -166,7 +156,6 @@ export default function AdminPage() {
     else fetchAdminData();
   }
 
-  // --- SPORTS MANAGEMENT HANDLERS ---
   async function handleAddSport(e) {
     e.preventDefault();
     if (!newSportName.trim()) return;
@@ -192,7 +181,6 @@ export default function AdminPage() {
     else fetchAdminData();
   }
 
-  // --- POINTS HANDLERS ---
   const getCurrentCompPoints = () => {
     if (!selectedCompId) return 0;
     if (pointTarget === 'student' && selectedPlayerId) {
@@ -396,7 +384,6 @@ export default function AdminPage() {
     else fetchAdminData();
   }
 
-  // --- FUNDRAISING HANDLERS ---
   async function handleSaveFundraising(e) {
     e.preventDefault();
     setFundActionMsg('');
@@ -482,7 +469,6 @@ export default function AdminPage() {
     else fetchAdminData();
   }
 
-  // --- DONATIONS HANDLERS ---
   async function handleAddDonation(e) {
     e.preventDefault();
     setDonationMsg('');
@@ -618,7 +604,6 @@ export default function AdminPage() {
 
   return (
     <div className="min-h-screen bg-slate-950 text-slate-100 p-6 md:p-12">
-      {/* Header */}
       <div className="max-w-6xl mx-auto flex flex-col md:flex-row justify-between items-start md:items-center mb-8 pb-6 border-b border-slate-800 gap-4">
         <div>
           <h1 className="text-3xl font-extrabold text-white tracking-tight">👑 Admin Control Center</h1>
@@ -634,7 +619,6 @@ export default function AdminPage() {
         </div>
       </div>
 
-      {/* Navigation Tabs */}
       <div className="max-w-6xl mx-auto mb-8 flex flex-wrap gap-3 border-b border-slate-800 pb-4">
         <button
           onClick={() => setActiveTab('points')}
@@ -674,7 +658,6 @@ export default function AdminPage() {
       </div>
 
       <div className="max-w-6xl mx-auto">
-        {/* TAB 1: POINTS MANAGEMENT */}
         {activeTab === 'points' && (
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
             <div className="bg-slate-900 border border-slate-800 rounded-xl p-6 shadow-xl h-fit space-y-6">
@@ -925,7 +908,6 @@ export default function AdminPage() {
           </div>
         )}
 
-        {/* TAB 2: KNOCKOUT BRACKET CONTROLLER */}
         {activeTab === 'brackets' && (
           <div className="space-y-6">
             <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center bg-slate-900 p-5 rounded-2xl border border-slate-800 gap-4">
@@ -1034,7 +1016,6 @@ export default function AdminPage() {
           </div>
         )}
 
-        {/* TAB 3: TEAMS MANAGEMENT & QUICK SPORTS CONTROL */}
         {activeTab === 'teams' && (
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
             <div className="space-y-6">
@@ -1148,7 +1129,6 @@ export default function AdminPage() {
           </div>
         )}
 
-        {/* TAB 4: COMPETITIONS */}
         {activeTab === 'competitions' && (
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
             <div className="bg-slate-900 border border-slate-800 rounded-xl p-6 shadow-xl h-fit">
@@ -1264,7 +1244,6 @@ export default function AdminPage() {
           </div>
         )}
 
-        {/* TAB 5: DONATIONS & EQUIPMENT FUNDRAISING GOALS */}
         {activeTab === 'donations' && (
           <div className="space-y-8">
             {pendingDonationRequests.length > 0 && (
