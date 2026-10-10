@@ -9,12 +9,21 @@ const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBh
 
 const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
+const DEFAULT_SPORTS = [
+  { id: '1', name: 'Football', emoji: '⚽' },
+  { id: '2', name: 'Basketball', emoji: '🏀' },
+  { id: '3', name: 'Volleyball', emoji: '🏐' },
+  { id: '4', name: 'Chess', emoji: '♟️' },
+  { id: '5', name: 'E-Sports', emoji: '🎮' },
+  { id: '6', name: 'Handball', emoji: '🤾' },
+];
+
 export default function AdminPage() {
   const [loading, setLoading] = useState(true);
-  const [activeTab, setActiveTab] = useState('brackets');
+  const [activeTab, setActiveTab] = useState('points');
 
   // Data States
-  const [sportsList, setSportsList] = useState([]);
+  const [sportsList, setSportsList] = useState(DEFAULT_SPORTS);
   const [teams, setTeams] = useState([]);
   const [players, setPlayers] = useState([]);
   const [competitions, setCompetitions] = useState([]);
@@ -83,7 +92,6 @@ export default function AdminPage() {
         return;
       }
 
-      // Check profile by User ID
       const { data: profile, error: profileError } = await supabase
         .from('profiles')
         .select('is_admin')
@@ -94,7 +102,6 @@ export default function AdminPage() {
         console.warn("Profile fetch warning:", profileError.message);
       }
 
-      // Explicitly deny ONLY if profile exists and is_admin is explicitly set to false
       if (profile && profile.is_admin === false) {
         alert("Access Denied: Account does not have admin privileges.");
         router.push('/');
@@ -120,9 +127,8 @@ export default function AdminPage() {
 
     if (sportsData && sportsData.length > 0) {
       setSportsList(sportsData);
-      setCompSport((prev) => prev || sportsData[0].name);
-      setNewTeamSport((prev) => prev || sportsData[0].name);
-      setSelectedBracketSport((prev) => prev || sportsData[0].name);
+    } else {
+      setSportsList(DEFAULT_SPORTS);
     }
 
     if (teamsData) {
@@ -572,12 +578,12 @@ export default function AdminPage() {
   ];
 
   return (
-    <div className="min-h-screen bg-slate-950 text-slate-100 p-6 md:p-12">
+    <div dir="ltr" className="min-h-screen bg-slate-950 text-slate-100 p-6 md:p-12 text-left">
       {/* Header */}
       <div className="max-w-6xl mx-auto flex flex-col md:flex-row justify-between items-start md:items-center mb-8 pb-6 border-b border-slate-800 gap-4">
         <div>
           <h1 className="text-3xl font-extrabold text-white tracking-tight">👑 Admin Control Center</h1>
-          <p className="text-slate-400 text-sm mt-1">Manage knockout brackets, teams, scores, equipment goals & donations.</p>
+          <p className="text-slate-400 text-sm mt-1">Manage points, teams, competitions, donations & knockout brackets.</p>
         </div>
         <div className="flex gap-2">
           <a href="/knockout" className="px-4 py-2 bg-amber-500 hover:bg-amber-400 text-slate-950 text-sm font-black rounded-xl transition shadow-lg">
@@ -589,14 +595,8 @@ export default function AdminPage() {
         </div>
       </div>
 
-      {/* Admin Navigation Tabs */}
+      {/* Admin Navigation Tabs - Bracket Tab moved to the LAST position on the RIGHT */}
       <div className="max-w-6xl mx-auto mb-8 flex flex-wrap gap-3 border-b border-slate-800 pb-4">
-        <button
-          onClick={() => setActiveTab('brackets')}
-          className={`px-5 py-2.5 rounded-xl text-sm font-bold transition ${activeTab === 'brackets' ? 'bg-amber-500 text-slate-950 shadow-lg' : 'bg-slate-900 text-slate-400 hover:bg-slate-800'}`}
-        >
-          🥊 Knockout Brackets
-        </button>
         <button
           onClick={() => setActiveTab('points')}
           className={`px-5 py-2.5 rounded-xl text-sm font-bold transition ${activeTab === 'points' ? 'bg-indigo-600 text-white shadow-lg' : 'bg-slate-900 text-slate-400 hover:bg-slate-800'}`}
@@ -626,111 +626,16 @@ export default function AdminPage() {
             </span>
           )}
         </button>
+        <button
+          onClick={() => setActiveTab('brackets')}
+          className={`px-5 py-2.5 rounded-xl text-sm font-bold transition ${activeTab === 'brackets' ? 'bg-amber-500 text-slate-950 shadow-lg' : 'bg-slate-900 text-slate-400 hover:bg-slate-800'}`}
+        >
+          🥊 Knockout Brackets
+        </button>
       </div>
 
       <div className="max-w-6xl mx-auto">
-        {/* TAB 1: KNOCKOUT BRACKET CONTROLLER */}
-        {activeTab === 'brackets' && (
-          <div className="space-y-6">
-            <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center bg-slate-900 p-5 rounded-2xl border border-slate-800 gap-4">
-              <div>
-                <h2 className="text-xl font-bold text-white flex items-center gap-2">
-                  <span>🥊</span> 8-Team Knockout Bracket Controller
-                </h2>
-                <p className="text-xs text-slate-400 mt-0.5">Select a sport to set quarterfinal matchups and declare round winners live.</p>
-              </div>
-
-              <div className="flex items-center gap-2">
-                <span className="text-xs font-bold text-slate-400 uppercase">Select Sport:</span>
-                <select
-                  value={selectedBracketSport}
-                  onChange={(e) => setSelectedBracketSport(e.target.value)}
-                  className="bg-slate-950 border border-slate-700 text-sm font-bold text-amber-300 rounded-xl p-2.5 focus:outline-none"
-                >
-                  {sportsList.map((s) => (
-                    <option key={s.id} value={s.name}>
-                      {s.emoji} {s.name}
-                    </option>
-                  ))}
-                </select>
-              </div>
-            </div>
-
-            <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
-              {BRACKET_MATCH_KEYS.map(({ key, label }) => {
-                const match = knockoutMatches.find(
-                  (m) => m.sport === selectedBracketSport && m.match_key === key
-                ) || {};
-
-                return (
-                  <div key={key} className="bg-slate-900 border border-slate-800 p-5 rounded-2xl space-y-3.5 shadow-xl">
-                    <div className="flex justify-between items-center border-b border-slate-800 pb-2">
-                      <span className="font-extrabold text-amber-400 text-xs tracking-wider uppercase">{key}</span>
-                      <span className="text-xxs text-slate-400 font-medium">{label}</span>
-                    </div>
-
-                    <div>
-                      <label className="block text-xxs font-bold text-slate-400 uppercase mb-1">Team 1 Slot</label>
-                      <select
-                        value={match.team1_id || ''}
-                        onChange={(e) => handleUpdateBracketMatch(key, e.target.value, match.team2_id, match.winner_id)}
-                        className="w-full bg-slate-950 border border-slate-800 text-white text-xs p-2.5 rounded-lg focus:border-amber-500 focus:outline-none"
-                      >
-                        <option value="">-- None / TBD --</option>
-                        {teams.map((t) => (
-                          <option key={t.id} value={t.id}>
-                            {t.team_name || t.name} ({t.sport})
-                          </option>
-                        ))}
-                      </select>
-                    </div>
-
-                    <div>
-                      <label className="block text-xxs font-bold text-slate-400 uppercase mb-1">Team 2 Slot</label>
-                      <select
-                        value={match.team2_id || ''}
-                        onChange={(e) => handleUpdateBracketMatch(key, match.team1_id, e.target.value, match.winner_id)}
-                        className="w-full bg-slate-950 border border-slate-800 text-white text-xs p-2.5 rounded-lg focus:border-amber-500 focus:outline-none"
-                      >
-                        <option value="">-- None / TBD --</option>
-                        {teams.map((t) => (
-                          <option key={t.id} value={t.id}>
-                            {t.team_name || t.name} ({t.sport})
-                          </option>
-                        ))}
-                      </select>
-                    </div>
-
-                    <div className="pt-2 border-t border-slate-800/80">
-                      <label className="block text-xxs font-black text-emerald-400 uppercase mb-1">
-                        Declare Round Winner 🏆
-                      </label>
-                      <select
-                        value={match.winner_id || ''}
-                        onChange={(e) => handleUpdateBracketMatch(key, match.team1_id, match.team2_id, e.target.value)}
-                        className="w-full bg-emerald-950/80 border border-emerald-500/80 text-emerald-200 text-xs font-bold p-2.5 rounded-lg focus:outline-none"
-                      >
-                        <option value="">-- Match In Progress (No Winner) --</option>
-                        {match.team1_id && (
-                          <option value={match.team1_id}>
-                            🏆 WINNER: {teams.find((t) => t.id === match.team1_id)?.team_name || 'Team 1'}
-                          </option>
-                        )}
-                        {match.team2_id && (
-                          <option value={match.team2_id}>
-                            🏆 WINNER: {teams.find((t) => t.id === match.team2_id)?.team_name || 'Team 2'}
-                          </option>
-                        )}
-                      </select>
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-          </div>
-        )}
-
-        {/* TAB 2: POINTS MANAGEMENT */}
+        {/* TAB 1: POINTS MANAGEMENT */}
         {activeTab === 'points' && (
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
             <div className="bg-slate-900 border border-slate-800 rounded-xl p-6 shadow-xl h-fit space-y-6">
@@ -864,7 +769,7 @@ export default function AdminPage() {
                   onClick={handleClearAllPoints}
                   className="w-full py-2 bg-rose-900/30 hover:bg-rose-600 border border-rose-700/50 text-rose-200 hover:text-white font-semibold text-xs rounded-lg transition"
                 >
-                  Clear All Points (Students & Teams)
+                  Clear All Points
                 </button>
               </div>
             </div>
@@ -979,7 +884,7 @@ export default function AdminPage() {
           </div>
         )}
 
-        {/* TAB 3: TEAMS & SPORTS DATABASE */}
+        {/* TAB 2: TEAMS & SPORTS DATABASE */}
         {activeTab === 'teams' && (
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
             <div className="space-y-6">
@@ -1093,7 +998,7 @@ export default function AdminPage() {
           </div>
         )}
 
-        {/* TAB 4: COMPETITIONS */}
+        {/* TAB 3: COMPETITIONS */}
         {activeTab === 'competitions' && (
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
             <div className="bg-slate-900 border border-slate-800 rounded-xl p-6 shadow-xl h-fit">
@@ -1203,7 +1108,7 @@ export default function AdminPage() {
           </div>
         )}
 
-        {/* TAB 5: DONATIONS & EQUIPMENT FUNDRAISING GOALS */}
+        {/* TAB 4: DONATIONS & EQUIPMENT FUNDRAISING GOALS */}
         {activeTab === 'donations' && (
           <div className="space-y-8">
             {pendingDonationRequests.length > 0 && (
@@ -1527,6 +1432,107 @@ export default function AdminPage() {
                   </table>
                 </div>
               </div>
+            </div>
+          </div>
+        )}
+
+        {/* TAB 5: KNOCKOUT BRACKET CONTROLLER */}
+        {activeTab === 'brackets' && (
+          <div className="space-y-6">
+            <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center bg-slate-900 p-5 rounded-2xl border border-slate-800 gap-4">
+              <div>
+                <h2 className="text-xl font-bold text-white flex items-center gap-2">
+                  <span>🥊</span> 8-Team Knockout Bracket Controller
+                </h2>
+                <p className="text-xs text-slate-400 mt-0.5">Select a sport to set quarterfinal matchups and declare round winners live.</p>
+              </div>
+
+              <div className="flex items-center gap-2">
+                <span className="text-xs font-bold text-slate-400 uppercase">Select Sport:</span>
+                <select
+                  value={selectedBracketSport}
+                  onChange={(e) => setSelectedBracketSport(e.target.value)}
+                  className="bg-slate-950 border border-slate-700 text-sm font-bold text-amber-300 rounded-xl p-2.5 focus:outline-none"
+                >
+                  {sportsList.map((s) => (
+                    <option key={s.id} value={s.name}>
+                      {s.emoji} {s.name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            </div>
+
+            <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
+              {BRACKET_MATCH_KEYS.map(({ key, label }) => {
+                const match = knockoutMatches.find(
+                  (m) => m.sport === selectedBracketSport && m.match_key === key
+                ) || {};
+
+                return (
+                  <div key={key} className="bg-slate-900 border border-slate-800 p-5 rounded-2xl space-y-3.5 shadow-xl">
+                    <div className="flex justify-between items-center border-b border-slate-800 pb-2">
+                      <span className="font-extrabold text-amber-400 text-xs tracking-wider uppercase">{key}</span>
+                      <span className="text-xxs text-slate-400 font-medium">{label}</span>
+                    </div>
+
+                    <div>
+                      <label className="block text-xxs font-bold text-slate-400 uppercase mb-1">Team 1 Slot</label>
+                      <select
+                        value={match.team1_id || ''}
+                        onChange={(e) => handleUpdateBracketMatch(key, e.target.value, match.team2_id, match.winner_id)}
+                        className="w-full bg-slate-950 border border-slate-800 text-white text-xs p-2.5 rounded-lg focus:border-amber-500 focus:outline-none"
+                      >
+                        <option value="">-- None / TBD --</option>
+                        {teams.map((t) => (
+                          <option key={t.id} value={t.id}>
+                            {t.team_name || t.name} ({t.sport})
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+
+                    <div>
+                      <label className="block text-xxs font-bold text-slate-400 uppercase mb-1">Team 2 Slot</label>
+                      <select
+                        value={match.team2_id || ''}
+                        onChange={(e) => handleUpdateBracketMatch(key, match.team1_id, e.target.value, match.winner_id)}
+                        className="w-full bg-slate-950 border border-slate-800 text-white text-xs p-2.5 rounded-lg focus:border-amber-500 focus:outline-none"
+                      >
+                        <option value="">-- None / TBD --</option>
+                        {teams.map((t) => (
+                          <option key={t.id} value={t.id}>
+                            {t.team_name || t.name} ({t.sport})
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+
+                    <div className="pt-2 border-t border-slate-800/80">
+                      <label className="block text-xxs font-black text-emerald-400 uppercase mb-1">
+                        Declare Round Winner 🏆
+                      </label>
+                      <select
+                        value={match.winner_id || ''}
+                        onChange={(e) => handleUpdateBracketMatch(key, match.team1_id, match.team2_id, e.target.value)}
+                        className="w-full bg-emerald-950/80 border border-emerald-500/80 text-emerald-200 text-xs font-bold p-2.5 rounded-lg focus:outline-none"
+                      >
+                        <option value="">-- Match In Progress (No Winner) --</option>
+                        {match.team1_id && (
+                          <option value={match.team1_id}>
+                            🏆 WINNER: {teams.find((t) => t.id === match.team1_id)?.team_name || 'Team 1'}
+                          </option>
+                        )}
+                        {match.team2_id && (
+                          <option value={match.team2_id}>
+                            🏆 WINNER: {teams.find((t) => t.id === match.team2_id)?.team_name || 'Team 2'}
+                          </option>
+                        )}
+                      </select>
+                    </div>
+                  </div>
+                );
+              })}
             </div>
           </div>
         )}
